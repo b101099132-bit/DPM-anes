@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理儀表板 | DPM-anes</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 18px 20px; margin-bottom: 18px; }
+  .card h2 { font-size: 1.05rem; color: #1a5e9e; margin: 0 0 12px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  .tablebox { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; white-space: nowrap; }
+  th, td { border: 1px solid #dde5ee; padding: 5px 8px; text-align: right; }
+  th { background: #eef4fa; color: #1a3c5e; position: sticky; top: 0; }
+  td:first-child, th:first-child { text-align: center; font-weight: bold; background: #f7fafd; }
+  td.note { text-align: left; max-width: 260px; white-space: normal; font-size: .8rem; color: #667; }
+  .chartbox { position: relative; height: 320px; }
+  #status { color: #789; }
+  .err { color: #c0392b; font-weight: bold; }
+  a.form-link { display: inline-block; margin-left: 12px; font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>麻醉部績效管理系統｜管理儀表板
+    <a class="form-link" href="#" id="formLink">→ 前往填報頁</a>
+  </h1>
+  <div id="status">載入中…</div>
+
+  <div class="card">
+    <h2>麻醉總數趨勢（兩院區）</h2>
+    <div class="chartbox"><canvas id="trendChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>總院：刀房 vs 外圍業務</h2>
+    <div class="chartbox"><canvas id="hqChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>總院（新店耕莘）月報明細</h2>
+    <div class="tablebox" id="hqTable"></div>
+  </div>
+
+  <div class="card">
+    <h2>安康院區月報明細</h2>
+    <div class="tablebox" id="akTable"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+var DATA = {};
+
+init();
+
+function init() {
+  var code = getPasscode();
+  if (!code) { location.href = 'index.html'; return; }
+  document.getElementById('formLink').href = 'form.html#' + encodeURIComponent(code);
+  jsonp({ action: 'auth', passcode: code }, function (res) {
+    if (!res || !res.ok || res.role !== 'admin') {
+      document.getElementById('status').innerHTML = '<span class="err">僅限管理員瀏覽</span>';
+      return;
+    }
+    load('hq'); load('ak');
+  });
+}
+
+function load(site) {
+  jsonp({ action: 'monthly', site: site, passcode: getPasscode() }, function (res) {
+    if (!res || !res.ok) {
+      document.getElementById('status').innerHTML = '<span class="err">讀取失敗：' + ((res && res.error) || '') + '</span>';
+      return;
+    }
+    res.rows.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
+    DATA[site] = res;
+    renderTable(site, site === 'hq' ? 'hqTable' : 'akTable');
+    if (DATA.hq && DATA.ak) {
+      document.getElementById('status').textContent = '';
+      renderTrend();
+      renderHqSplit();
+    }
+  });
+}
+
+function col(site, name) { return DATA[site].headers.indexOf(name); }
+function fmt(h, v) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (h === '填報時間') { var d = new Date(v); return isNaN(d) ? String(v) : (d.getFullYear() - 1911) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2); }
+  return String(v);
+}
+
+function renderTable(site, elId) {
+  var d = DATA[site];
+  var html = '<table><tr>' + d.headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+  d.rows.forEach(function (r) {
+    html += '<tr>' + d.headers.map(function (h, i) {
+      var cls = (h === '備註') ? ' class="note"' : '';
+      return '<td' + cls + '>' + fmt(h, r[i]) + '</td>';
+    }).join('') + '</tr>';
+  });
+  html += '</table>';
+  document.getElementById(elId).innerHTML = html;
+}
+
+function pick(site, name) {
+  var c = col(site, name);
+  var out = {};
+  DATA[site].rows.forEach(function (r) {
+    var v = r[c];
+    out[String(r[0])] = (v === '' || v === null) ? null : Number(v);
+  });
+  return out;
+}
+
+function allMonths() {
+  var set = {};
+  ['hq', 'ak'].forEach(function (s) { DATA[s].rows.forEach(function (r) { set[String(r[0])] = 1; }); });
+  return Object.keys(set).sort();
+}
+
+function renderTrend() {
+  var months = allMonths();
+  var hq = pick('hq', '麻醉總數'), ak = pick('ak', '麻醉總數');
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: '總院', data: months.map(function (m) { return m in hq ? hq[m] : null; }), borderColor: '#1a5e9e', backgroundColor: '#1a5e9e', tension: .2 },
+        { label: '安康', data: months.map(function (m) { return m in ak ? ak[m] : null; }), borderColor: '#b34700', backgroundColor: '#b34700', tension: .2 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, spanGaps: true,
+      scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderHqSplit() {
+  var months = allMonths().filter(function (m) { return m in pick('hq', '麻醉總數'); });
+  var or_ = pick('hq', '刀房業務'), gi = pick('hq', '麻醉腸胃鏡');
+  var ercp = pick('hq', 'ERCP'), rfa = pick('hq', 'RFA'), cath = pick('hq', '心導管室'), self_ = pick('hq', '刀房自費麻醉');
+  function periph(m) {
+    var s = 0, any = false;
+    [gi, ercp, rfa, cath].forEach(function (o) { if (o[m] != null) { s += o[m]; any = true; } });
+    return any ? s : null;
+  }
+  new Chart(document.getElementById('hqChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { label: '刀房業務', data: months.map(function (m) { return or_[m]; }), backgroundColor: '#1a5e9e' },
+        { label: '刀房自費', data: months.map(function (m) { return self_[m]; }), backgroundColor: '#6da7d8' },
+        { label: '外圍業務', data: months.map(function (m) { return periph(m); }), backgroundColor: '#e0913f' }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麻醉統計月報填報 | DPM-anes</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 12px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+  .row label { flex: 1; font-size: .95rem; }
+  .row input[type=number] { width: 110px; padding: 6px 8px; border: 1px solid #bcd; border-radius: 6px; font-size: 1rem; text-align: right; }
+  .subtotal { border-top: 1px dashed #ccc; padding-top: 8px; font-weight: bold; color: #1a5e9e; }
+  .total { font-size: 1.1rem; font-weight: bold; color: #b34700; }
+  textarea { width: 100%; box-sizing: border-box; border: 1px solid #bcd; border-radius: 6px; padding: 8px; font-size: .95rem; font-family: inherit; }
+  input[type=month] { padding: 6px 8px; border: 1px solid #bcd; border-radius: 6px; font-size: 1rem; }
+  button { width: 100%; padding: 12px; font-size: 1.05rem; border: 0; border-radius: 8px; background: #1a5e9e; color: #fff; cursor: pointer; }
+  button:disabled { background: #9ab; cursor: wait; }
+  #result { margin-top: 12px; white-space: pre-wrap; font-size: .95rem; min-height: 1.2em; }
+  .ok { color: #0a7a2f; font-weight: bold; }
+  .err { color: #c0392b; font-weight: bold; }
+  .hint { color: #789; font-size: .8rem; }
+  .loaded { background: #fff8e6; border: 1px solid #e6c980; border-radius: 6px; padding: 6px 10px; font-size: .85rem; color: #8a6d1a; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">麻醉統計月報填報</h1>
+  <div class="card" id="siteSwitch" style="display:none">
+    <h2>院區（管理員）</h2>
+    <select id="siteSel" onchange="switchSite()" style="width:100%;padding:8px;border:1px solid #bcd;border-radius:6px;font-size:1rem">
+      <option value="hq">總院（新店耕莘）</option>
+      <option value="ak">安康院區</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <h2>填報月份</h2>
+    <div class="row">
+      <label for="month">月份（民國 <span id="rocLabel"></span>）</label>
+      <input type="month" id="month">
+    </div>
+    <div class="loaded" id="loadedHint">此月份已有資料，已帶入原值，送出後將覆蓋更新。</div>
+  </div>
+
+  <div id="groups"></div>
+
+  <div class="card">
+    <h2>備註</h2>
+    <textarea id="note" rows="2" placeholder="特殊情形說明（選填）"></textarea>
+  </div>
+
+  <div class="card">
+    <div class="row total"><label>麻醉總數（自動加總）</label><span id="grandTotal">0</span></div>
+    <button id="submitBtn" onclick="submitForm()">送出月報</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+var SITE = null, UI = null, ROLE = null, CACHE = null; // CACHE: {headers, rows}
+
+init();
+
+function init() {
+  var code = getPasscode();
+  if (!code) { location.href = 'index.html'; return; }
+  jsonp({ action: 'auth', passcode: code }, function (res) {
+    if (!res || !res.ok) { location.href = 'index.html'; return; }
+    ROLE = res.role;
+    SITE = (ROLE === 'admin') ? 'hq' : ROLE; // 管理員預設總院，可切換
+    if (ROLE === 'admin') document.getElementById('siteSwitch').style.display = 'block';
+    setupSite();
+    var m = document.getElementById('month');
+    m.value = rocToIso(prevRocMonth()); // 預設上個月
+    m.addEventListener('change', onMonthChange);
+    updateRocLabel();
+    loadData();
+  });
+}
+
+function setupSite() {
+  UI = SITE_UI[SITE];
+  document.getElementById('title').textContent = UI.label + '｜麻醉統計月報填報';
+  buildForm();
+}
+
+function switchSite() {
+  SITE = document.getElementById('siteSel').value;
+  CACHE = null;
+  setupSite();
+  loadData();
+}
+
+function buildForm() {
+  var box = document.getElementById('groups');
+  var html = '';
+  UI.groups.forEach(function (g, gi) {
+    html += '<div class="card"><h2>' + g.title + '</h2>';
+    g.items.forEach(function (k) {
+      html += '<div class="row"><label>' + k + '</label>' +
+              '<input type="number" min="0" step="1" data-key="' + k + '" oninput="recalc()"></div>';
+    });
+    if (g.subtotal) {
+      html += '<div class="row subtotal"><label>' + g.subtotal + '（小計）</label><span id="sub' + gi + '">0</span></div>';
+    }
+    html += '</div>';
+  });
+  if (UI.extras.length) {
+    html += '<div class="card"><h2>特殊註記項目（不計入麻醉總數）</h2>';
+    UI.extras.forEach(function (k) {
+      html += '<div class="row"><label>' + k + '</label>' +
+              '<input type="number" min="0" step="1" data-key="' + k + '"></div>';
+    });
+    html += '</div>';
+  }
+  box.innerHTML = html;
+}
+
+function num(v) { var n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+function inputEl(key) { return document.querySelector('input[data-key="' + key + '"]'); }
+
+function recalc() {
+  var subs = {};
+  UI.groups.forEach(function (g, gi) {
+    if (!g.subtotal) return;
+    var s = 0;
+    g.items.forEach(function (k) { s += num(inputEl(k).value); });
+    subs[g.subtotal] = s;
+    document.getElementById('sub' + gi).textContent = s;
+  });
+  var total = 0;
+  UI.total.sum.forEach(function (k) {
+    total += (k in subs) ? subs[k] : num(inputEl(k) && inputEl(k).value);
+  });
+  document.getElementById('grandTotal').textContent = total;
+  return { subs: subs, total: total };
+}
+
+function updateRocLabel() {
+  var iso = document.getElementById('month').value;
+  document.getElementById('rocLabel').textContent = iso ? isoToRoc(iso) : '';
+}
+
+function loadData() {
+  jsonp({ action: 'monthly', site: SITE, passcode: getPasscode() }, function (res) {
+    if (res && res.ok) { CACHE = res; fillMonth(); }
+  });
+}
+
+function onMonthChange() { updateRocLabel(); fillMonth(); }
+
+function fillMonth() {
+  if (!CACHE) return;
+  var roc = isoToRoc(document.getElementById('month').value || '');
+  var hint = document.getElementById('loadedHint');
+  var row = null;
+  CACHE.rows.forEach(function (r) { if (String(r[0]) === roc) row = r; });
+  // 先清空
+  document.querySelectorAll('input[data-key]').forEach(function (el) { el.value = ''; });
+  document.getElementById('note').value = '';
+  if (row) {
+    CACHE.headers.forEach(function (h, i) {
+      var el = inputEl(h);
+      if (el) el.value = row[i];
+      if (h === '備註') document.getElementById('note').value = row[i] || '';
+    });
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+  }
+  recalc();
+}
+
+function submitForm() {
+  var iso = document.getElementById('month').value;
+  if (!iso) { showResult('請選擇月份', false); return; }
+  var roc = isoToRoc(iso);
+  var calc = recalc();
+  var data = {};
+  document.querySelectorAll('input[data-key]').forEach(function (el) {
+    data[el.getAttribute('data-key')] = (el.value === '') ? '' : num(el.value);
+  });
+  Object.keys(calc.subs).forEach(function (k) { data[k] = calc.subs[k]; });
+  data[UI.total.key] = calc.total;
+  data['備註'] = document.getElementById('note').value.trim();
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  showResult('送出中…', null);
+  fetch(API_URL, {
+    method: 'POST', mode: 'no-cors',
+    body: new URLSearchParams({
+      action: 'saveMonthly', passcode: getPasscode(),
+      site: SITE, month: roc, data: JSON.stringify(data)
+    })
+  });
+  // no-cors 讀不到回應 → 3 秒後回讀驗證
+  setTimeout(function () { verify(roc, calc.total, btn); }, 3000);
+}
+
+function verify(roc, total, btn) {
+  jsonp({ action: 'monthly', site: SITE, passcode: getPasscode() }, function (res) {
+    btn.disabled = false;
+    if (res && res.ok) {
+      CACHE = res;
+      var row = null;
+      res.rows.forEach(function (r) { if (String(r[0]) === roc) row = r; });
+      if (row && num(row[1]) === total) {
+        showResult('✓ ' + roc + ' 月報已成功寫入（麻醉總數 ' + total + '）', true);
+        document.getElementById('loadedHint').style.display = 'block';
+      } else {
+        showResult('回讀驗證未通過，請重新送出或聯絡管理員', false);
+      }
+    } else {
+      showResult('回讀失敗，請稍後在系統確認資料是否寫入', false);
+    }
+  });
+}
+
+function showResult(msg, ok) {
+  var el = document.getElementById('result');
+  el.innerHTML = ok === null ? msg : '<span class="' + (ok ? 'ok' : 'err') + '">' + msg + '</span>';
+}
+</script>
+</body>
+</html>
