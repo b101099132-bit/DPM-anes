@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPM-anes 麻醉部績效管理系統</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.4rem; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .ok { color: #0a7a2f; font-weight: bold; }
+  .fail { color: #c0392b; font-weight: bold; }
+  button { padding: 8px 20px; font-size: 1rem; border-radius: 6px; border: 1px solid #888; background: #f5f5f5; cursor: pointer; }
+  button:hover { background: #e8e8e8; }
+  #writeStatus { margin-top: 10px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>DPM-anes 系統連線測試頁</h1>
+
+<div class="card">
+  <h2>1. 後端讀取測試（JSONP）</h2>
+  <div id="pingStatus">連線中…</div>
+</div>
+
+<div class="card">
+  <h2>2. 後端寫入測試（no-cors POST）</h2>
+  <button onclick="sendTest()">測試寫入 Google Sheet</button>
+  <div id="writeStatus"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+function jsonp(params, cbName) {
+  const qs = Object.entries(params).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  const s = document.createElement('script');
+  s.src = API_URL + '?' + qs + '&callback=' + cbName;
+  s.onerror = function () {
+    document.getElementById('pingStatus').innerHTML = '<span class="fail">JSONP 載入失敗（檢查 config.js 的 API_URL）</span>';
+  };
+  document.body.appendChild(s);
+}
+
+window.onPing = function (res) {
+  const el = document.getElementById('pingStatus');
+  el.innerHTML = res && res.ok
+    ? '<span class="ok">後端連線成功</span>（' + res.system + '，' + res.time + '）'
+    : '<span class="fail">後端回應異常：' + JSON.stringify(res) + '</span>';
+};
+
+window.onLast = function (res) {
+  const el = document.getElementById('writeStatus');
+  el.innerHTML = res && res.ok && res.last
+    ? '<span class="ok">寫入驗證成功</span>\n最後一筆：' + JSON.stringify(res.last)
+    : '<span class="fail">回讀不到資料（確認已在編輯器執行過 initSheets）</span>';
+};
+
+function sendTest() {
+  const body = new URLSearchParams({ action: 'test', msg: 'hello ' + new Date().toISOString() });
+  fetch(API_URL, { method: 'POST', mode: 'no-cors', body: body });
+  document.getElementById('writeStatus').textContent = '已送出（no-cors 讀不到回應），3 秒後回讀驗證…';
+  setTimeout(function () { jsonp({ action: 'lastTest' }, 'onLast'); }, 3000);
+}
+
+if (typeof API_URL === 'undefined' || API_URL.indexOf('REPLACE') === 0) {
+  document.getElementById('pingStatus').innerHTML = '<span class="fail">config.js 尚未設定 API_URL（執行 初始建置.bat 會自動填入）</span>';
+} else {
+  jsonp({ action: 'ping' }, 'onPing');
+}
+</script>
+</body>
+</html>
