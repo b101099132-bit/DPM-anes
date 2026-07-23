@@ -51,8 +51,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="config.js?v=3"></script>
-<script src="common.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="common.js?v=4"></script>
 <script>
 var DATA = {};
 
@@ -143,11 +143,13 @@ function renderTrend() {
 
 function renderHqSplit() {
   var months = allMonths().filter(function (m) { return m in pick('hq', '麻醉總數'); });
-  var or_ = pick('hq', '刀房業務'), gi = pick('hq', '麻醉腸胃鏡');
-  var ercp = pick('hq', 'ERCP'), rfa = pick('hq', 'RFA'), cath = pick('hq', '心導管室'), self_ = pick('hq', '刀房自費麻醉');
+  var or_ = pick('hq', '刀房業務'), self_ = pick('hq', '刀房自費麻醉(Z674)');
+  // 外圍 = 舊「麻醉腸胃鏡」(歷史) + 新四項內視鏡 + ERCP/RFA/心導管
+  var periphCols = ['麻醉腸胃鏡', '麻醉胃鏡(Z6701)', '麻醉大腸鏡(Z6702)', '麻醉腸胃鏡(Z6703)', '麻醉內視鏡超音波(Z6710)', 'ERCP', 'RFA', '心導管室']
+    .map(function (n) { return pick('hq', n); });
   function periph(m) {
     var s = 0, any = false;
-    [gi, ercp, rfa, cath].forEach(function (o) { if (o[m] != null) { s += o[m]; any = true; } });
+    periphCols.forEach(function (o) { if (o[m] != null) { s += o[m]; any = true; } });
     return any ? s : null;
   }
   new Chart(document.getElementById('hqChart'), {
