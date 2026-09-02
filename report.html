@@ -19,8 +19,12 @@
   td:first-child, th:first-child { text-align: center; font-weight: bold; background: #f7fafd; }
   .dlbtn { font-size: .8rem; padding: 5px 12px; border: 1px solid #1a5e9e; background: #fff; color: #1a5e9e; border-radius: 6px; cursor: pointer; }
   .dlbtn:hover { background: #eef4fa; }
-  .toolbar { margin-bottom: 14px; }
-  .toolbar button { font-size: .9rem; padding: 8px 16px; border: 0; border-radius: 6px; background: #1a5e9e; color: #fff; cursor: pointer; margin-right: 8px; }
+  .toolbar { margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar button { font-size: .9rem; padding: 8px 16px; border: 0; border-radius: 6px; background: #1a5e9e; color: #fff; cursor: pointer; }
+  .seg { display: inline-flex; border: 1px solid #1a5e9e; border-radius: 8px; overflow: hidden; }
+  .seg button { border-radius: 0; background: #fff; color: #1a5e9e; border-right: 1px solid #1a5e9e; }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: #1a5e9e; color: #fff; }
   #status { color: #789; }
   .err { color: #c0392b; font-weight: bold; }
   a.nav { display: inline-block; margin-left: 12px; font-size: .85rem; }
@@ -34,9 +38,14 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>耕莘醫院麻醉部｜麻醉業務分析報告（總院）<span id="navLinks"></span></h1>
+  <h1>耕莘醫院麻醉部｜麻醉業務分析報告（<span id="viewLabel">總院</span>）<span id="navLinks"></span></h1>
   <div id="status">載入中…</div>
   <div class="toolbar" id="toolbar" style="display:none">
+    <div class="seg">
+      <button id="segHq" class="active" onclick="setView('hq')">總院</button>
+      <button id="segAk" onclick="setView('ak')">安康</button>
+      <button id="segAll" onclick="setView('all')">綜合</button>
+    </div>
     <button onclick="window.print()">列印 / 另存 PDF</button>
   </div>
 
@@ -54,18 +63,19 @@
     <div class="tablebox" id="t2"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card3">
     <div class="cardhead"><h2>三、腸胃鏡日均量 vs. 目標值（<span id="targetLabel"></span> 台/日）</h2>
       <button class="dlbtn" onclick="dlChart('c3','腸胃鏡日均量vs目標值')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c3"></canvas></div>
     <div class="tablebox" id="t3"></div>
-    <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數；未填工作天數的月份不顯示。</div>
+    <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數（僅總院填報天數，此圖僅總院檢視顯示）。</div>
   </div>
 
   <div class="card">
     <div class="cardhead"><h2>四、麻醉型態趨勢（插管全麻／未插管全麻／IVG）</h2>
       <button class="dlbtn" onclick="dlChart('c4','麻醉型態趨勢')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c4"></canvas></div>
+    <div class="hint" id="hint4"></div>
   </div>
 </div>
 
@@ -73,8 +83,12 @@
 <script src="config.js?v=5"></script>
 <script src="common.js?v=5"></script>
 <script>
-var H = [], ROWS = [], CHARTS = {};
+var DATA = {};          // {hq:{H,rows}, ak:{H,rows}}
+var SERIES = {};        // {hq:[...], ak:[...], all:[...]}
+var VIEW = 'hq';
+var CHARTS = {};
 var YEAR_COLORS = ['#4472c4', '#c0504d', '#9bbb59', '#8064a2', '#f79646', '#4bacc6'];
+var VIEW_LABEL = { hq: '總院', ak: '安康', all: '兩院綜合' };
 
 init();
 
@@ -89,46 +103,91 @@ function init() {
     var nav = '';
     if (res.role === 'admin') nav = '<a class="nav" href="dashboard.html#' + encodeURIComponent(code) + '">→ 管理儀表板</a>';
     document.getElementById('navLinks').innerHTML = nav;
-    jsonp({ action: 'monthly', site: 'hq', passcode: code }, function (r2) {
-      if (!r2 || !r2.ok) {
-        document.getElementById('status').innerHTML = '<span class="err">讀取失敗：' + ((r2 && r2.error) || '') + '</span>';
-        return;
-      }
-      H = r2.headers;
-      ROWS = r2.rows.filter(function (r) { return /^\d{3}\/\d{2}$/.test(String(r[0])); });
-      ROWS.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
-      document.getElementById('status').textContent = '';
-      document.getElementById('toolbar').style.display = 'block';
-      document.getElementById('targetLabel').textContent = GI_TARGET;
-      render();
-    });
+    loadSite('hq'); loadSite('ak');
   });
 }
 
-function val(row, name) {
-  var i = H.indexOf(name);
-  if (i < 0) return null;
-  var v = row[i];
-  return (v === '' || v === null || v === undefined) ? null : Number(v);
+function loadSite(site) {
+  jsonp({ action: 'monthly', site: site, passcode: getPasscode() }, function (res) {
+    if (!res || !res.ok) {
+      document.getElementById('status').innerHTML = '<span class="err">讀取失敗：' + ((res && res.error) || '') + '</span>';
+      return;
+    }
+    var rows = res.rows.filter(function (r) { return /^\d{3}\/\d{2}$/.test(String(r[0])); });
+    rows.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
+    DATA[site] = { H: res.headers, rows: rows };
+    if (DATA.hq && DATA.ak) {
+      SERIES.hq = buildSeries(DATA.hq, false);
+      SERIES.ak = buildSeries(DATA.ak, true);
+      SERIES.all = combineSeries(SERIES.hq, SERIES.ak);
+      document.getElementById('status').textContent = '';
+      document.getElementById('toolbar').style.display = 'flex';
+      document.getElementById('targetLabel').textContent = GI_TARGET;
+      render();
+    }
+  });
 }
-function giOf(row) {
-  var s = 0, any = false;
-  GI_COLS.forEach(function (n) { var v = val(row, n); if (v != null) { s += v; any = true; } });
-  return any ? s : null;
-}
-function monthOf(row) { return String(row[0]); }
-function yearOf(row) { return monthOf(row).split('/')[0]; }
-function monOf(row) { return parseInt(monthOf(row).split('/')[1], 10); }
 
-// ===== 圖一、圖二：年度同期比較 =====
-function byYear(getter) {
+// ===== 統一資料格式：[{month,total,gi,intub,nonintub,ivg,days}] =====
+function buildSeries(D, isAk) {
+  return D.rows.map(function (r) {
+    function v(name) {
+      var i = D.H.indexOf(name);
+      if (i < 0) return null;
+      var x = r[i];
+      return (x === '' || x === null || x === undefined) ? null : Number(x);
+    }
+    var gi = null, s = 0, any = false;
+    GI_COLS.forEach(function (n) { var x = v(n); if (x != null) { s += x; any = true; } });
+    if (any) gi = s;
+    var intub;
+    if (isAk) {
+      var a = v('插管全身麻醉(96020)'), b = v('插管全身麻醉(96030)');
+      intub = (a == null && b == null) ? null : (a || 0) + (b || 0);
+    } else {
+      intub = v('插管全身麻醉(96020)');
+    }
+    return { month: String(r[0]), total: v('麻醉總數'), gi: gi, intub: intub,
+      nonintub: v('未插管全身麻醉(96017)'), ivg: v('IVG(96004)'),
+      days: isAk ? null : v('腸胃鏡工作天數') };
+  });
+}
+
+function addN(a, b) { return (a == null && b == null) ? null : (a || 0) + (b || 0); }
+
+function combineSeries(A, B) {
+  var map = {};
+  A.concat(B).forEach(function (s) {
+    if (!map[s.month]) {
+      map[s.month] = { month: s.month, total: s.total, gi: s.gi, intub: s.intub, nonintub: s.nonintub, ivg: s.ivg, days: null };
+    } else {
+      var m = map[s.month];
+      m.total = addN(m.total, s.total);
+      m.gi = addN(m.gi, s.gi);
+      m.intub = addN(m.intub, s.intub);
+      m.nonintub = addN(m.nonintub, s.nonintub);
+      m.ivg = addN(m.ivg, s.ivg);
+    }
+  });
+  return Object.keys(map).sort().map(function (k) { return map[k]; });
+}
+
+function setView(v) {
+  VIEW = v;
+  ['segHq', 'segAk', 'segAll'].forEach(function (id) { document.getElementById(id).classList.remove('active'); });
+  document.getElementById(v === 'hq' ? 'segHq' : v === 'ak' ? 'segAk' : 'segAll').classList.add('active');
+  document.getElementById('viewLabel').textContent = VIEW_LABEL[v];
+  render();
+}
+
+// ===== 年度同期工具 =====
+function byYear(list, key) {
   var out = {};
-  ROWS.forEach(function (r) {
-    var v = getter(r);
-    if (v == null) return;
-    var y = yearOf(r);
-    if (!out[y]) out[y] = {};
-    out[y][monOf(r)] = v;
+  list.forEach(function (s) {
+    if (s[key] == null) return;
+    var p = s.month.split('/');
+    if (!out[p[0]]) out[p[0]] = {};
+    out[p[0]][parseInt(p[1], 10)] = s[key];
   });
   return out;
 }
@@ -152,19 +211,23 @@ function yoyTable(elId, data) {
   });
   document.getElementById(elId).innerHTML = html + '</table>';
 }
+function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHARTS[id]; } }
 
 // ===== 主渲染 =====
 function render() {
+  var list = SERIES[VIEW];
   var labels12 = Array.from({ length: 12 }, function (_, i) { return (i + 1) + '月'; });
 
-  var totalYoY = byYear(function (r) { return val(r, '麻醉總數'); });
+  destroyChart('c1');
+  var totalYoY = byYear(list, 'total');
   CHARTS.c1 = new Chart(document.getElementById('c1'), {
     data: { labels: labels12, datasets: yoyDatasets(totalYoY, 'line') },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '個案數' } } } }
   });
   yoyTable('t1', totalYoY);
 
-  var giYoY = byYear(giOf);
+  destroyChart('c2');
+  var giYoY = byYear(list, 'gi');
   CHARTS.c2 = new Chart(document.getElementById('c2'), {
     type: 'bar',
     data: { labels: labels12, datasets: yoyDatasets(giYoY, 'bar') },
@@ -172,40 +235,47 @@ function render() {
   });
   yoyTable('t2', giYoY);
 
-  // 圖三：日均 vs 目標
-  var dRows = ROWS.filter(function (r) { return giOf(r) != null && val(r, '腸胃鏡工作天數') != null && val(r, '腸胃鏡工作天數') > 0; });
-  var dLabels = dRows.map(monthOf);
-  var avg = dRows.map(function (r) { return Math.round(giOf(r) / val(r, '腸胃鏡工作天數') * 10) / 10; });
-  var gap = avg.map(function (v) { return Math.round((v - GI_TARGET) * 10) / 10; });
-  CHARTS.c3 = new Chart(document.getElementById('c3'), {
-    data: { labels: dLabels, datasets: [
-      { type: 'bar', label: '日均腸胃鏡數', data: avg, backgroundColor: '#4472c4' },
-      { type: 'line', label: '目標值', data: dLabels.map(function () { return GI_TARGET; }), borderColor: '#c0504d', pointRadius: 0, borderWidth: 3 },
-      { type: 'line', label: '與目標差距', data: gap, borderColor: '#9bbb59', backgroundColor: '#9bbb59', tension: .2 }
-    ] },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '台數/每天均量' } } } }
-  });
-  var h3 = '<table><tr><th>日期</th>' + dRows.map(function (r) { return '<th>' + monthOf(r) + '</th>'; }).join('') + '</tr>';
-  h3 += '<tr><td>麻醉總數</td>' + dRows.map(function (r) { var v = val(r, '麻醉總數'); return '<td>' + (v == null ? '' : v) + '</td>'; }).join('') + '</tr>';
-  h3 += '<tr><td>麻醉腸胃鏡</td>' + dRows.map(function (r) { return '<td>' + giOf(r) + '</td>'; }).join('') + '</tr>';
-  h3 += '<tr><td>百分比</td>' + dRows.map(function (r) {
-    var t = val(r, '麻醉總數'), g = giOf(r);
-    return '<td>' + ((t && g != null) ? (Math.round(g / t * 10000) / 100).toFixed(2) + '%' : '') + '</td>';
-  }).join('') + '</tr></table>';
-  document.getElementById('t3').innerHTML = h3;
+  // 圖三：僅總院檢視（天數只有總院填報）
+  var card3 = document.getElementById('card3');
+  if (VIEW === 'hq') {
+    card3.style.display = 'block';
+    destroyChart('c3');
+    var dRows = list.filter(function (s) { return s.gi != null && s.days != null && s.days > 0; });
+    var avg = dRows.map(function (s) { return Math.round(s.gi / s.days * 10) / 10; });
+    var gap = avg.map(function (v) { return Math.round((v - GI_TARGET) * 10) / 10; });
+    CHARTS.c3 = new Chart(document.getElementById('c3'), {
+      data: { labels: dRows.map(function (s) { return s.month; }), datasets: [
+        { type: 'bar', label: '日均腸胃鏡數', data: avg, backgroundColor: '#4472c4' },
+        { type: 'line', label: '目標值', data: dRows.map(function () { return GI_TARGET; }), borderColor: '#c0504d', pointRadius: 0, borderWidth: 3 },
+        { type: 'line', label: '與目標差距', data: gap, borderColor: '#9bbb59', backgroundColor: '#9bbb59', tension: .2 }
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '台數/每天均量' } } } }
+    });
+    var h3 = '<table><tr><th>日期</th>' + dRows.map(function (s) { return '<th>' + s.month + '</th>'; }).join('') + '</tr>';
+    h3 += '<tr><td>麻醉總數</td>' + dRows.map(function (s) { return '<td>' + (s.total == null ? '' : s.total) + '</td>'; }).join('') + '</tr>';
+    h3 += '<tr><td>麻醉腸胃鏡</td>' + dRows.map(function (s) { return '<td>' + s.gi + '</td>'; }).join('') + '</tr>';
+    h3 += '<tr><td>百分比</td>' + dRows.map(function (s) {
+      return '<td>' + ((s.total && s.gi != null) ? (Math.round(s.gi / s.total * 10000) / 100).toFixed(2) + '%' : '') + '</td>';
+    }).join('') + '</tr></table>';
+    document.getElementById('t3').innerHTML = h3;
+  } else {
+    card3.style.display = 'none';
+  }
 
-  // 圖四：麻醉型態堆疊
-  var sRows = ROWS.filter(function (r) { return val(r, '插管全身麻醉(96020)') != null; });
+  destroyChart('c4');
+  var sRows = list.filter(function (s) { return s.intub != null; });
   CHARTS.c4 = new Chart(document.getElementById('c4'), {
     type: 'bar',
-    data: { labels: sRows.map(monthOf), datasets: [
-      { label: '插管全麻', data: sRows.map(function (r) { return val(r, '插管全身麻醉(96020)'); }), backgroundColor: '#4472c4' },
-      { label: '未插管全麻', data: sRows.map(function (r) { return val(r, '未插管全身麻醉(96017)'); }), backgroundColor: '#c0504d' },
-      { label: 'IVG', data: sRows.map(function (r) { return val(r, 'IVG(96004)'); }), backgroundColor: '#9bbb59' }
+    data: { labels: sRows.map(function (s) { return s.month; }), datasets: [
+      { label: '插管全麻', data: sRows.map(function (s) { return s.intub; }), backgroundColor: '#4472c4' },
+      { label: '未插管全麻', data: sRows.map(function (s) { return s.nonintub; }), backgroundColor: '#c0504d' },
+      { label: 'IVG', data: sRows.map(function (s) { return s.ivg; }), backgroundColor: '#9bbb59' }
     ] },
     options: { responsive: true, maintainAspectRatio: false,
       scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: '個案數' } } } }
   });
+  document.getElementById('hint4').textContent =
+    (VIEW === 'hq') ? '' : '插管全麻含 96020 與 96030（安康）。';
 }
 
 // ===== PNG 下載（白底）=====
@@ -218,8 +288,9 @@ function dlChart(id, name) {
   ctx.fillRect(0, 0, tmp.width, tmp.height);
   ctx.drawImage(src, 0, 0);
   var a = document.createElement('a');
-  var last = ROWS.length ? monthOf(ROWS[ROWS.length - 1]).replace('/', '-') : '';
-  a.download = name + '_' + last + '.png';
+  var list = SERIES[VIEW];
+  var last = list.length ? list[list.length - 1].month.replace('/', '-') : '';
+  a.download = VIEW_LABEL[VIEW] + '_' + name + '_' + last + '.png';
   a.href = tmp.toDataURL('image/png');
   a.click();
 }
