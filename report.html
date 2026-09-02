@@ -68,7 +68,7 @@
       <button class="dlbtn" onclick="dlChart('c3','腸胃鏡日均量vs目標值')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c3"></canvas></div>
     <div class="tablebox" id="t3"></div>
-    <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數（僅總院填報天數，此圖僅總院檢視顯示）。</div>
+    <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數；未填工作天數的月份不顯示。</div>
   </div>
 
   <div class="card">
@@ -80,15 +80,15 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="config.js?v=5"></script>
-<script src="common.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="common.js?v=6"></script>
 <script>
 var DATA = {};          // {hq:{H,rows}, ak:{H,rows}}
 var SERIES = {};        // {hq:[...], ak:[...], all:[...]}
 var VIEW = 'hq';
 var CHARTS = {};
 var YEAR_COLORS = ['#4472c4', '#c0504d', '#9bbb59', '#8064a2', '#f79646', '#4bacc6'];
-var VIEW_LABEL = { hq: '總院', ak: '安康', all: '兩院綜合' };
+var VIEW_LABEL = { hq: '總院', ak: '安康', all: '兩院對照' };
 
 init();
 
@@ -119,7 +119,6 @@ function loadSite(site) {
     if (DATA.hq && DATA.ak) {
       SERIES.hq = buildSeries(DATA.hq, false);
       SERIES.ak = buildSeries(DATA.ak, true);
-      SERIES.all = combineSeries(SERIES.hq, SERIES.ak);
       document.getElementById('status').textContent = '';
       document.getElementById('toolbar').style.display = 'flex';
       document.getElementById('targetLabel').textContent = GI_TARGET;
@@ -149,27 +148,20 @@ function buildSeries(D, isAk) {
     }
     return { month: String(r[0]), total: v('麻醉總數'), gi: gi, intub: intub,
       nonintub: v('未插管全身麻醉(96017)'), ivg: v('IVG(96004)'),
-      days: isAk ? null : v('腸胃鏡工作天數') };
+      days: v('腸胃鏡工作天數') };
   });
 }
 
-function addN(a, b) { return (a == null && b == null) ? null : (a || 0) + (b || 0); }
-
-function combineSeries(A, B) {
-  var map = {};
-  A.concat(B).forEach(function (s) {
-    if (!map[s.month]) {
-      map[s.month] = { month: s.month, total: s.total, gi: s.gi, intub: s.intub, nonintub: s.nonintub, ivg: s.ivg, days: null };
-    } else {
-      var m = map[s.month];
-      m.total = addN(m.total, s.total);
-      m.gi = addN(m.gi, s.gi);
-      m.intub = addN(m.intub, s.intub);
-      m.nonintub = addN(m.nonintub, s.nonintub);
-      m.ivg = addN(m.ivg, s.ivg);
-    }
-  });
-  return Object.keys(map).sort().map(function (k) { return map[k]; });
+// 綜合檢視工具：月份聯集、單一欄位的月份對照表
+function allMonths_() {
+  var set = {};
+  SERIES.hq.concat(SERIES.ak).forEach(function (s) { set[s.month] = 1; });
+  return Object.keys(set).sort();
+}
+function mapOf_(list, key) {
+  var o = {};
+  list.forEach(function (s) { if (s[key] != null) o[s.month] = s[key]; });
+  return o;
 }
 
 function setView(v) {
@@ -215,6 +207,7 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 
 // ===== 主渲染 =====
 function render() {
+  if (VIEW === 'all') { renderCompare(); return; }
   var list = SERIES[VIEW];
   var labels12 = Array.from({ length: 12 }, function (_, i) { return (i + 1) + '月'; });
 
@@ -235,9 +228,9 @@ function render() {
   });
   yoyTable('t2', giYoY);
 
-  // 圖三：僅總院檢視（天數只有總院填報）
+  // 圖三：日均量 vs 目標（有填工作天數的月份才顯示）
   var card3 = document.getElementById('card3');
-  if (VIEW === 'hq') {
+  {
     card3.style.display = 'block';
     destroyChart('c3');
     var dRows = list.filter(function (s) { return s.gi != null && s.days != null && s.days > 0; });
@@ -258,8 +251,6 @@ function render() {
       return '<td>' + ((s.total && s.gi != null) ? (Math.round(s.gi / s.total * 10000) / 100).toFixed(2) + '%' : '') + '</td>';
     }).join('') + '</tr></table>';
     document.getElementById('t3').innerHTML = h3;
-  } else {
-    card3.style.display = 'none';
   }
 
   destroyChart('c4');
@@ -278,6 +269,81 @@ function render() {
     (VIEW === 'hq') ? '' : '插管全麻含 96020 與 96030（安康）。';
 }
 
+// ===== 綜合檢視：兩院同圖對照（不加總）=====
+function compareTable_(elId, L, hqMap, akMap) {
+  var html = '<table><tr><th></th>' + L.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr>';
+  html += '<tr><td>總院</td>' + L.map(function (m) { return '<td>' + (m in hqMap ? hqMap[m] : '') + '</td>'; }).join('') + '</tr>';
+  html += '<tr><td>安康</td>' + L.map(function (m) { return '<td>' + (m in akMap ? akMap[m] : '') + '</td>'; }).join('') + '</tr>';
+  document.getElementById(elId).innerHTML = html + '</table>';
+}
+
+function renderCompare() {
+  var L = allMonths_();
+  var HQ_C = '#1a5e9e', AK_C = '#b34700';
+
+  destroyChart('c1');
+  var hqT = mapOf_(SERIES.hq, 'total'), akT = mapOf_(SERIES.ak, 'total');
+  CHARTS.c1 = new Chart(document.getElementById('c1'), {
+    data: { labels: L, datasets: [
+      { type: 'line', label: '總院', data: L.map(function (m) { return m in hqT ? hqT[m] : null; }), borderColor: HQ_C, backgroundColor: HQ_C, tension: .15, spanGaps: true },
+      { type: 'line', label: '安康', data: L.map(function (m) { return m in akT ? akT[m] : null; }), borderColor: AK_C, backgroundColor: AK_C, tension: .15, spanGaps: true }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
+  });
+  compareTable_('t1', L, hqT, akT);
+
+  destroyChart('c2');
+  var hqG = mapOf_(SERIES.hq, 'gi'), akG = mapOf_(SERIES.ak, 'gi');
+  CHARTS.c2 = new Chart(document.getElementById('c2'), {
+    type: 'bar',
+    data: { labels: L, datasets: [
+      { label: '總院', data: L.map(function (m) { return m in hqG ? hqG[m] : null; }), backgroundColor: HQ_C },
+      { label: '安康', data: L.map(function (m) { return m in akG ? akG[m] : null; }), backgroundColor: AK_C }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
+  });
+  compareTable_('t2', L, hqG, akG);
+
+  // 圖三對照：兩院日均線 + 目標線
+  document.getElementById('card3').style.display = 'block';
+  destroyChart('c3');
+  function avgMap(list) {
+    var o = {};
+    list.forEach(function (s) {
+      if (s.gi != null && s.days != null && s.days > 0) o[s.month] = Math.round(s.gi / s.days * 10) / 10;
+    });
+    return o;
+  }
+  var hqA = avgMap(SERIES.hq), akA = avgMap(SERIES.ak);
+  var L3 = L.filter(function (m) { return (m in hqA) || (m in akA); });
+  CHARTS.c3 = new Chart(document.getElementById('c3'), {
+    data: { labels: L3, datasets: [
+      { type: 'line', label: '總院日均', data: L3.map(function (m) { return m in hqA ? hqA[m] : null; }), borderColor: HQ_C, backgroundColor: HQ_C, tension: .2, spanGaps: true },
+      { type: 'line', label: '安康日均', data: L3.map(function (m) { return m in akA ? akA[m] : null; }), borderColor: AK_C, backgroundColor: AK_C, tension: .2, spanGaps: true },
+      { type: 'line', label: '目標值', data: L3.map(function () { return GI_TARGET; }), borderColor: '#c0504d', pointRadius: 0, borderWidth: 3, borderDash: [6, 4] }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '台數/每天均量' } } } }
+  });
+  compareTable_('t3', L3, hqA, akA);
+
+  destroyChart('c4');
+  var ds = [];
+  [['總院', SERIES.hq, ['#4472c4', '#c0504d', '#9bbb59']],
+   ['安康', SERIES.ak, ['#9ab7e0', '#e0a09e', '#c6d9a0']]].forEach(function (cfg) {
+    var name = cfg[0], mI = mapOf_(cfg[1], 'intub'), mN = mapOf_(cfg[1], 'nonintub'), mV = mapOf_(cfg[1], 'ivg');
+    ds.push({ label: name + '-插管全麻', data: L.map(function (m) { return m in mI ? mI[m] : null; }), backgroundColor: cfg[2][0], stack: name });
+    ds.push({ label: name + '-未插管全麻', data: L.map(function (m) { return m in mN ? mN[m] : null; }), backgroundColor: cfg[2][1], stack: name });
+    ds.push({ label: name + '-IVG', data: L.map(function (m) { return m in mV ? mV[m] : null; }), backgroundColor: cfg[2][2], stack: name });
+  });
+  CHARTS.c4 = new Chart(document.getElementById('c4'), {
+    type: 'bar',
+    data: { labels: L, datasets: ds },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: '個案數' } } } }
+  });
+  document.getElementById('hint4').textContent = '每月左右兩柱分別為總院（深色）與安康（淺色）堆疊；安康插管全麻含 96020 與 96030。';
+}
+
 // ===== PNG 下載（白底）=====
 function dlChart(id, name) {
   var src = document.getElementById(id);
@@ -288,7 +354,7 @@ function dlChart(id, name) {
   ctx.fillRect(0, 0, tmp.width, tmp.height);
   ctx.drawImage(src, 0, 0);
   var a = document.createElement('a');
-  var list = SERIES[VIEW];
+  var list = SERIES[VIEW] || SERIES.hq.concat(SERIES.ak).sort(function (a, b) { return a.month < b.month ? -1 : 1; });
   var last = list.length ? list[list.length - 1].month.replace('/', '-') : '';
   a.download = VIEW_LABEL[VIEW] + '_' + name + '_' + last + '.png';
   a.href = tmp.toDataURL('image/png');
