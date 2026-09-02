@@ -77,6 +77,13 @@
     <div class="chartbox"><canvas id="c4"></canvas></div>
     <div class="hint" id="hint4"></div>
   </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>五、麻醉型態比例趨勢（％）</h2>
+      <button class="dlbtn" onclick="dlChart('c5','麻醉型態比例趨勢')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c5"></canvas></div>
+    <div class="hint">各月插管全麻／未插管全麻／IVG 佔三者合計之百分比。</div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -267,6 +274,33 @@ function render() {
   });
   document.getElementById('hint4').textContent =
     (VIEW === 'hq') ? '' : '插管全麻含 96020 與 96030（安康）。';
+
+  // 圖五：型態比例（100% 堆疊）
+  destroyChart('c5');
+  CHARTS.c5 = new Chart(document.getElementById('c5'), {
+    type: 'bar',
+    data: { labels: sRows.map(function (s) { return s.month; }), datasets: pctDatasets_(sRows, '', ['#4472c4', '#c0504d', '#9bbb59'], 'x') },
+    options: pctOptions_()
+  });
+}
+
+// ===== 型態比例工具 =====
+function pctDatasets_(list, prefix, cols, stackName) {
+  function pct(s, v) {
+    var sum = (s.intub || 0) + (s.nonintub || 0) + (s.ivg || 0);
+    return (sum > 0 && v != null) ? Math.round(v / sum * 1000) / 10 : null;
+  }
+  return [
+    { label: prefix + '插管全麻', data: list.map(function (s) { return pct(s, s.intub); }), backgroundColor: cols[0], stack: stackName },
+    { label: prefix + '未插管全麻', data: list.map(function (s) { return pct(s, s.nonintub); }), backgroundColor: cols[1], stack: stackName },
+    { label: prefix + 'IVG', data: list.map(function (s) { return pct(s, s.ivg); }), backgroundColor: cols[2], stack: stackName }
+  ];
+}
+function pctOptions_() {
+  return { responsive: true, maintainAspectRatio: false,
+    plugins: { tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + c.parsed.y + '%'; } } } },
+    scales: { x: { stacked: true }, y: { stacked: true, min: 0, max: 100, title: { display: true, text: '％' },
+      ticks: { callback: function (v) { return v + '%'; } } } } };
 }
 
 // ===== 綜合檢視：兩院同圖對照（不加總）=====
@@ -342,6 +376,21 @@ function renderCompare() {
       scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: '個案數' } } } }
   });
   document.getElementById('hint4').textContent = '每月左右兩柱分別為總院（深色）與安康（淺色）堆疊；安康插管全麻含 96020 與 96030。';
+
+  // 圖五對照：兩院各自 100% 堆疊
+  destroyChart('c5');
+  function alignSeries(list) {
+    var byM = {};
+    list.forEach(function (s) { byM[s.month] = s; });
+    return L.map(function (m) { return byM[m] || { month: m, intub: null, nonintub: null, ivg: null }; });
+  }
+  var ds5 = pctDatasets_(alignSeries(SERIES.hq), '總院-', ['#4472c4', '#c0504d', '#9bbb59'], '總院')
+    .concat(pctDatasets_(alignSeries(SERIES.ak), '安康-', ['#9ab7e0', '#e0a09e', '#c6d9a0'], '安康'));
+  CHARTS.c5 = new Chart(document.getElementById('c5'), {
+    type: 'bar',
+    data: { labels: L, datasets: ds5 },
+    options: pctOptions_()
+  });
 }
 
 // ===== PNG 下載（白底）=====
