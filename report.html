@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麻醉業務分析報告 | DPM-anes</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 18px 20px; margin-bottom: 18px; }
+  .cardhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .card h2 { font-size: 1.05rem; color: #1a5e9e; margin: 0; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  .chartbox { position: relative; height: 340px; }
+  .tablebox { overflow-x: auto; margin-top: 12px; }
+  table { border-collapse: collapse; font-size: .82rem; white-space: nowrap; }
+  th, td { border: 1px solid #dde5ee; padding: 4px 8px; text-align: right; }
+  th { background: #eef4fa; color: #1a3c5e; }
+  td:first-child, th:first-child { text-align: center; font-weight: bold; background: #f7fafd; }
+  .dlbtn { font-size: .8rem; padding: 5px 12px; border: 1px solid #1a5e9e; background: #fff; color: #1a5e9e; border-radius: 6px; cursor: pointer; }
+  .dlbtn:hover { background: #eef4fa; }
+  .toolbar { margin-bottom: 14px; }
+  .toolbar button { font-size: .9rem; padding: 8px 16px; border: 0; border-radius: 6px; background: #1a5e9e; color: #fff; cursor: pointer; margin-right: 8px; }
+  #status { color: #789; }
+  .err { color: #c0392b; font-weight: bold; }
+  a.nav { display: inline-block; margin-left: 12px; font-size: .85rem; }
+  .hint { color: #789; font-size: .8rem; margin-top: 6px; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar, .dlbtn, a.nav { display: none !important; }
+    .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>耕莘醫院麻醉部｜麻醉業務分析報告（總院）<span id="navLinks"></span></h1>
+  <div id="status">載入中…</div>
+  <div class="toolbar" id="toolbar" style="display:none">
+    <button onclick="window.print()">列印 / 另存 PDF</button>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>一、整體麻醉量成長趨勢（麻醉總數，含腸胃鏡）</h2>
+      <button class="dlbtn" onclick="dlChart('c1','整體麻醉量成長趨勢')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c1"></canvas></div>
+    <div class="tablebox" id="t1"></div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>二、腸胃鏡麻醉業務量同期比較</h2>
+      <button class="dlbtn" onclick="dlChart('c2','腸胃鏡麻醉業務量同期比較')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c2"></canvas></div>
+    <div class="tablebox" id="t2"></div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>三、腸胃鏡日均量 vs. 目標值（<span id="targetLabel"></span> 台/日）</h2>
+      <button class="dlbtn" onclick="dlChart('c3','腸胃鏡日均量vs目標值')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c3"></canvas></div>
+    <div class="tablebox" id="t3"></div>
+    <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數；未填工作天數的月份不顯示。</div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>四、麻醉型態趨勢（插管全麻／未插管全麻／IVG）</h2>
+      <button class="dlbtn" onclick="dlChart('c4','麻醉型態趨勢')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c4"></canvas></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
+<script>
+var H = [], ROWS = [], CHARTS = {};
+var YEAR_COLORS = ['#4472c4', '#c0504d', '#9bbb59', '#8064a2', '#f79646', '#4bacc6'];
+
+init();
+
+function init() {
+  var code = getPasscode();
+  if (!code) { location.href = 'index.html'; return; }
+  jsonp({ action: 'auth', passcode: code }, function (res) {
+    if (!res || !res.ok || (res.role !== 'admin' && res.role !== 'leader')) {
+      document.getElementById('status').innerHTML = '<span class="err">僅限管理員與主管瀏覽</span>';
+      return;
+    }
+    var nav = '';
+    if (res.role === 'admin') nav = '<a class="nav" href="dashboard.html#' + encodeURIComponent(code) + '">→ 管理儀表板</a>';
+    document.getElementById('navLinks').innerHTML = nav;
+    jsonp({ action: 'monthly', site: 'hq', passcode: code }, function (r2) {
+      if (!r2 || !r2.ok) {
+        document.getElementById('status').innerHTML = '<span class="err">讀取失敗：' + ((r2 && r2.error) || '') + '</span>';
+        return;
+      }
+      H = r2.headers;
+      ROWS = r2.rows.filter(function (r) { return /^\d{3}\/\d{2}$/.test(String(r[0])); });
+      ROWS.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
+      document.getElementById('status').textContent = '';
+      document.getElementById('toolbar').style.display = 'block';
+      document.getElementById('targetLabel').textContent = GI_TARGET;
+      render();
+    });
+  });
+}
+
+function val(row, name) {
+  var i = H.indexOf(name);
+  if (i < 0) return null;
+  var v = row[i];
+  return (v === '' || v === null || v === undefined) ? null : Number(v);
+}
+function giOf(row) {
+  var s = 0, any = false;
+  GI_COLS.forEach(function (n) { var v = val(row, n); if (v != null) { s += v; any = true; } });
+  return any ? s : null;
+}
+function monthOf(row) { return String(row[0]); }
+function yearOf(row) { return monthOf(row).split('/')[0]; }
+function monOf(row) { return parseInt(monthOf(row).split('/')[1], 10); }
+
+// ===== 圖一、圖二：年度同期比較 =====
+function byYear(getter) {
+  var out = {};
+  ROWS.forEach(function (r) {
+    var v = getter(r);
+    if (v == null) return;
+    var y = yearOf(r);
+    if (!out[y]) out[y] = {};
+    out[y][monOf(r)] = v;
+  });
+  return out;
+}
+function yoyDatasets(data, type) {
+  return Object.keys(data).sort().map(function (y, i) {
+    var c = YEAR_COLORS[i % YEAR_COLORS.length];
+    return { label: y + '年', type: type,
+      data: Array.from({ length: 12 }, function (_, m) { return (m + 1) in data[y] ? data[y][m + 1] : null; }),
+      borderColor: c, backgroundColor: c, tension: .15, spanGaps: true };
+  });
+}
+function yoyTable(elId, data) {
+  var ys = Object.keys(data).sort();
+  var html = '<table><tr><th></th>';
+  for (var m = 1; m <= 12; m++) html += '<th>' + m + '月</th>';
+  html += '</tr>';
+  ys.forEach(function (y) {
+    html += '<tr><td>' + y + '年</td>';
+    for (var m = 1; m <= 12; m++) html += '<td>' + (m in data[y] ? data[y][m] : '') + '</td>';
+    html += '</tr>';
+  });
+  document.getElementById(elId).innerHTML = html + '</table>';
+}
+
+// ===== 主渲染 =====
+function render() {
+  var labels12 = Array.from({ length: 12 }, function (_, i) { return (i + 1) + '月'; });
+
+  var totalYoY = byYear(function (r) { return val(r, '麻醉總數'); });
+  CHARTS.c1 = new Chart(document.getElementById('c1'), {
+    data: { labels: labels12, datasets: yoyDatasets(totalYoY, 'line') },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '個案數' } } } }
+  });
+  yoyTable('t1', totalYoY);
+
+  var giYoY = byYear(giOf);
+  CHARTS.c2 = new Chart(document.getElementById('c2'), {
+    type: 'bar',
+    data: { labels: labels12, datasets: yoyDatasets(giYoY, 'bar') },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
+  });
+  yoyTable('t2', giYoY);
+
+  // 圖三：日均 vs 目標
+  var dRows = ROWS.filter(function (r) { return giOf(r) != null && val(r, '腸胃鏡工作天數') != null && val(r, '腸胃鏡工作天數') > 0; });
+  var dLabels = dRows.map(monthOf);
+  var avg = dRows.map(function (r) { return Math.round(giOf(r) / val(r, '腸胃鏡工作天數') * 10) / 10; });
+  var gap = avg.map(function (v) { return Math.round((v - GI_TARGET) * 10) / 10; });
+  CHARTS.c3 = new Chart(document.getElementById('c3'), {
+    data: { labels: dLabels, datasets: [
+      { type: 'bar', label: '日均腸胃鏡數', data: avg, backgroundColor: '#4472c4' },
+      { type: 'line', label: '目標值', data: dLabels.map(function () { return GI_TARGET; }), borderColor: '#c0504d', pointRadius: 0, borderWidth: 3 },
+      { type: 'line', label: '與目標差距', data: gap, borderColor: '#9bbb59', backgroundColor: '#9bbb59', tension: .2 }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '台數/每天均量' } } } }
+  });
+  var h3 = '<table><tr><th>日期</th>' + dRows.map(function (r) { return '<th>' + monthOf(r) + '</th>'; }).join('') + '</tr>';
+  h3 += '<tr><td>麻醉總數</td>' + dRows.map(function (r) { var v = val(r, '麻醉總數'); return '<td>' + (v == null ? '' : v) + '</td>'; }).join('') + '</tr>';
+  h3 += '<tr><td>麻醉腸胃鏡</td>' + dRows.map(function (r) { return '<td>' + giOf(r) + '</td>'; }).join('') + '</tr>';
+  h3 += '<tr><td>百分比</td>' + dRows.map(function (r) {
+    var t = val(r, '麻醉總數'), g = giOf(r);
+    return '<td>' + ((t && g != null) ? (Math.round(g / t * 10000) / 100).toFixed(2) + '%' : '') + '</td>';
+  }).join('') + '</tr></table>';
+  document.getElementById('t3').innerHTML = h3;
+
+  // 圖四：麻醉型態堆疊
+  var sRows = ROWS.filter(function (r) { return val(r, '插管全身麻醉(96020)') != null; });
+  CHARTS.c4 = new Chart(document.getElementById('c4'), {
+    type: 'bar',
+    data: { labels: sRows.map(monthOf), datasets: [
+      { label: '插管全麻', data: sRows.map(function (r) { return val(r, '插管全身麻醉(96020)'); }), backgroundColor: '#4472c4' },
+      { label: '未插管全麻', data: sRows.map(function (r) { return val(r, '未插管全身麻醉(96017)'); }), backgroundColor: '#c0504d' },
+      { label: 'IVG', data: sRows.map(function (r) { return val(r, 'IVG(96004)'); }), backgroundColor: '#9bbb59' }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: '個案數' } } } }
+  });
+}
+
+// ===== PNG 下載（白底）=====
+function dlChart(id, name) {
+  var src = document.getElementById(id);
+  var tmp = document.createElement('canvas');
+  tmp.width = src.width; tmp.height = src.height;
+  var ctx = tmp.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.drawImage(src, 0, 0);
+  var a = document.createElement('a');
+  var last = ROWS.length ? monthOf(ROWS[ROWS.length - 1]).replace('/', '-') : '';
+  a.download = name + '_' + last + '.png';
+  a.href = tmp.toDataURL('image/png');
+  a.click();
+}
+</script>
+</body>
+</html>

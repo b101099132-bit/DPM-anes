@@ -26,6 +26,7 @@
 <div class="wrap">
   <h1>耕莘醫院麻醉部管理系統｜管理儀表板
     <a class="form-link" href="#" id="formLink">→ 前往填報頁</a>
+    <a class="form-link" href="#" id="reportLink">→ 分析報表</a>
   </h1>
   <div id="status">載入中…</div>
 
@@ -51,8 +52,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="config.js?v=4"></script>
-<script src="common.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
 <script>
 var DATA = {};
 
@@ -62,6 +63,7 @@ function init() {
   var code = getPasscode();
   if (!code) { location.href = 'index.html'; return; }
   document.getElementById('formLink').href = 'form.html#' + encodeURIComponent(code);
+  document.getElementById('reportLink').href = 'report.html#' + encodeURIComponent(code);
   jsonp({ action: 'auth', passcode: code }, function (res) {
     if (!res || !res.ok || res.role !== 'admin') {
       document.getElementById('status').innerHTML = '<span class="err">僅限管理員瀏覽</span>';

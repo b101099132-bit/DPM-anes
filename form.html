@@ -60,8 +60,8 @@
   </div>
 </div>
 
-<script src="config.js?v=4"></script>
-<script src="common.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
 <script>
 var SITE = null, UI = null, ROLE = null, CACHE = null; // CACHE: {headers, rows}
 
@@ -72,6 +72,7 @@ function init() {
   if (!code) { location.href = 'index.html'; return; }
   jsonp({ action: 'auth', passcode: code }, function (res) {
     if (!res || !res.ok) { location.href = 'index.html'; return; }
+    if (res.role === 'leader') { location.href = 'report.html' + location.hash; return; }
     ROLE = res.role;
     SITE = (ROLE === 'admin') ? 'hq' : ROLE; // 管理員預設總院，可切換
     if (ROLE === 'admin') document.getElementById('siteSwitch').style.display = 'block';
@@ -112,7 +113,7 @@ function buildForm() {
     html += '</div>';
   });
   if (UI.extras.length) {
-    html += '<div class="card"><h2>特殊註記項目（不計入麻醉總數）</h2>';
+    html += '<div class="card"><h2>其他項目（不計入麻醉總數）</h2>';
     UI.extras.forEach(function (k) {
       html += '<div class="row"><label>' + k + '</label>' +
               '<input type="number" min="0" step="1" data-key="' + k + '"></div>';
