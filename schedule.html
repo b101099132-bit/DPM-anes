@@ -31,7 +31,7 @@
   <div class="card">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <label>月份</label><select id="monthSel"></select>
-      <button onclick="dlDoc()">總班表（Word）</button>
+      <button onclick="dlPng()">總班表（圖片）</button>
       <button onclick="dlHospitalDoc()">醫院格式-醫療作業表（Word）</button>
       <button onclick="dlAnkangDoc()">安康值班表（Word）</button>
       <span id="status">載入中…</span>
@@ -43,6 +43,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="config.js?v=6"></script>
 <script src="common.js?v=6"></script>
 <script>
@@ -198,101 +199,138 @@ function buildMaster(forDoc) {
   return h;
 }
 
-function wordBlob(title, bodyHtml, filename) {
+// Word 相容 HTML（含 A4 版面與邊界設定，單位 mm：上/右/下/左）
+function wordBlob(title, bodyHtml, filename, mg) {
+  mg = mg || [20, 25, 25, 25];
   var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
     '<head><meta charset="utf-8"><title>' + title + '</title>' +
-    '<style>body{font-family:標楷體,DFKai-SB,serif;font-size:14pt}table{border-collapse:collapse;width:100%}' +
-    'td,th{border:1px solid #000;padding:3px 5px;text-align:center;font-size:11pt}h1{font-size:16pt;text-align:center}h2{font-size:13pt}</style>' +
-    '</head><body>' + bodyHtml + '</body></html>';
+    '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->' +
+    '<style>@page Sec1{size:210mm 297mm;margin:' + mg[0] + 'mm ' + mg[1] + 'mm ' + mg[2] + 'mm ' + mg[3] + 'mm;mso-page-orientation:portrait;}' +
+    'div.Sec1{page:Sec1}' +
+    'body{font-family:標楷體,DFKai-SB,serif}' +
+    'table{border-collapse:collapse}' +
+    'td{border:1px solid #000;padding:1px 3px;text-align:center;font-family:標楷體,DFKai-SB,serif}</style>' +
+    '</head><body><div class="Sec1">' + bodyHtml + '</div></body></html>';
   var blob = new Blob(['﻿' + html], { type: 'application/msword' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
 }
+// 安康表醫師名固定配色（比照原檔多彩風格）
+var DOC_COLORS = { '王': '#B8860B', '劉': '#000000', '李': '#E91E8C', '承': '#008000',
+  '富': '#FF00FF', '楊': '#00008B', '謝': '#FF0000', '昀': '#00BFFF', '鄒': '#7030A0' };
 function rocYM() {
   var p = document.getElementById('monthSel').value.split('/');
   return { y: p[0], m: p[1] };
 }
 
-// 醫院格式：醫療作業表（人力編制＋值班會診表＋學術活動＋注意事項）
+// 醫院格式：醫療作業表（比照原檔：標楷體、標題16pt置中、表格10-11pt、章節一、二、四、五）
 function dlHospitalDoc() {
   if (!DATA) return;
   var ym = rocYM();
   var docs = DATA.doctors;
-  var h = '<h1>麻醉部' + ym.y + '年' + ym.m + '月份醫師醫療作業表</h1>';
-  h += '<h2>一、人力編制：</h2><table><tr><th>專科</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th></tr>';
+  var SEC = 'style="font-size:12pt;margin:6pt 0 2pt;text-align:justify"';
+  var NOTE = 'style="font-size:12pt;font-weight:bold;margin:2pt 0"';
+  var h = '<p style="font-size:16pt;font-weight:bold;text-align:center;margin:0 0 6pt">麻醉部' + ym.y + '年' + ym.m + '月份醫師醫療作業表</p>';
+  h += '<p ' + SEC + '>一、人力編制：</p>';
+  h += '<table style="width:160mm;font-size:11pt"><tr><td style="width:14mm"></td>' +
+    '<td colspan="2" style="width:49mm">主治醫師</td><td colspan="2" style="width:49mm">主治醫師</td><td colspan="2" style="width:48mm">主治醫師</td></tr>' +
+    '<tr><td>專科</td><td>姓名</td><td>聯絡方式</td><td>姓名</td><td>聯絡方式</td><td>姓名</td><td>聯絡方式</td></tr>';
   for (var i = 0; i < docs.length; i += 3) {
-    h += '<tr><td>' + (i === 0 ? '麻醉科' : '') + '</td>';
+    var rowA = '<tr><td>' + (i === 0 ? '麻醉科' : '') + '</td>';
+    var rowB = '<tr><td></td>';
     for (var j = 0; j < 3; j++) {
       var d = docs[i + j];
-      h += d ? '<td>' + d.name + '</td><td>' + d.ext + '<br>手機：' + d.phone + '</td>' : '<td></td><td></td>';
+      rowA += d ? '<td style="width:16mm">' + d.name + '</td><td style="width:33mm">' + d.ext + '</td>' : '<td></td><td></td>';
+      rowB += d ? '<td></td><td>手機：' + d.phone + '</td>' : '<td></td><td></td>';
     }
-    h += '</tr>';
+    h += rowA + '</tr>' + rowB + '</tr>';
   }
-  h += '</table><p>備註：</p>';
-  h += '<h2>二、主治醫師值班、會診表：</h2>';
+  h += '</table><p ' + NOTE + '>備註： </p>';
+  h += '<p ' + SEC + '>二、主治醫師值班、會診表：</p>';
   [[1, 16], [17, DIM]].forEach(function (seg) {
-    h += '<table><tr><th>日期</th>';
-    for (var d = seg[0]; d <= seg[1]; d++) h += '<th>' + d + '</th>';
+    h += '<table style="font-size:10pt"><tr><td style="width:13mm">日期</td>';
+    for (var d = seg[0]; d <= seg[1]; d++) h += '<td style="width:9.2mm">' + d + '</td>';
     h += '</tr><tr><td>總院<br>值班</td>';
     for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + whoOn('值班', d1) + '</td>';
     h += '</tr><tr><td>安康</td>';
     for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + whoOn('安康', d2) + '</td>';
     h += '</tr></table><br>';
   });
-  h += '<p>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
-  h += '<h2>四、科內學術活動總表：</h2><table><tr><th>時間</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th></tr>' +
+  h += '<p ' + NOTE + '>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
+  h += '<p ' + SEC + '>四、科內學術活動總表：</p>';
+  h += '<table style="font-size:10.5pt"><tr><td style="width:25mm">時間</td><td style="width:25mm">星期一</td><td style="width:25mm">星期二</td><td style="width:25mm">星期三</td><td style="width:25mm">星期四</td><td style="width:22mm">星期五</td><td style="width:23mm">星期六</td></tr>' +
     '<tr><td>07:30～09:00</td><td>雜誌討論會</td><td></td><td></td><td>臨床討論會</td><td></td><td></td></tr>' +
     '<tr><td>09:00～12:00</td><td>臨床麻醉教學</td><td></td><td></td><td></td><td></td><td></td></tr>' +
     '<tr><td>12:00～13:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
     '<tr><td>13:00～14:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
     '<tr><td>13:00～14:30</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
     '<tr><td>17:00～18:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>' +
-    '<p>備註：每月第三週週四舉行臨床討論會</p>';
-  h += '<h2>五、注意事項：</h2><p>各醫療科總醫師或書記於每月28日前(若遇週六或假日則提前1-2日)，將該科次月「各科部醫師醫療作業表」電子檔案送交教研部。</p>';
-  wordBlob('醫療作業表', h, ym.y + '-' + ym.m + '醫院格式.doc');
+    '<p ' + NOTE + '>備註：每月第三週週四舉行臨床討論會</p>';
+  h += '<p ' + SEC + '>五、注意事項：</p>' +
+    '<p style="font-size:12pt;margin:2pt 0;text-align:justify">各醫療科總醫師或書記於每月28日前(若遇週六或假日則提前1-2日)，將該科次月「各科部醫師醫療作業表」電子檔案送交教研部。</p>';
+  wordBlob('醫療作業表', h, ym.y + '-' + ym.m + '醫院格式.doc', [20, 25, 25, 25]);
 }
 
-// 安康值班表（月曆＋聯絡資訊）
+// 安康值班表（比照原檔：標題18pt靠左、月曆16pt、平日淺綠/週末粉紅底色、醫師名彩色）
 function dlAnkangDoc() {
   if (!DATA) return;
   var ym = rocYM();
-  var h = '<h1>' + ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表</h1>';
-  h += '<table><tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
+  var GN = 'background:#EBF1DD', PK = 'background:#FFCCCC';
+  function bg(col) { return col >= 5 ? PK : GN; } // col 0-4 平日, 5-6 週末
+  var h = '<p style="font-size:18pt;font-weight:bold;margin:0 0 4pt">' + ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表</p>';
+  h += '<table style="font-size:16pt"><tr><td style="width:12mm;' + GN + '">星期</td>' +
+    ['一', '二', '三', '四', '五', '六', '日'].map(function (w, i) {
+      return '<td style="width:17mm;' + bg(i) + '">' + w + '</td>';
+    }).join('') + '</tr>';
   var firstDow = (new Date(Y, M - 1, 1).getDay() + 6) % 7;
   var day = 1;
   while (day <= DIM) {
-    var nums = '', names = '';
+    var nums = '<tr><td style="' + GN + '"></td>', names = '<tr><td style="' + GN + '"></td>';
     for (var col = 0; col < 7; col++) {
-      if ((day === 1 && col < firstDow) || day > DIM) { nums += '<td></td>'; names += '<td></td>'; continue; }
-      nums += '<td>' + day + '</td>';
-      names += '<td>' + whoOn('安康', day) + '</td>';
+      var b = bg(col);
+      if ((day === 1 && col < firstDow) || day > DIM) {
+        nums += '<td style="' + b + '"></td>'; names += '<td style="' + b + '"></td>'; continue;
+      }
+      var who = whoOn('安康', day);
+      var color = DOC_COLORS[who] || '#000000';
+      nums += '<td style="' + b + '">' + day + '</td>';
+      names += '<td style="' + b + ';color:' + color + ';font-weight:bold">' + who + '</td>';
       day++;
     }
-    h += '<tr>' + nums + '</tr><tr>' + names + '</tr>';
+    h += nums + '</tr>' + names + '</tr>';
   }
-  h += '</table><p style="font-size:11pt">';
+  h += '</table><p style="font-size:12pt;margin-top:6pt">';
   DATA.doctors.forEach(function (d) {
     h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
   });
   h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';
-  wordBlob('安康值班表', h, ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表-安康.doc');
+  wordBlob('安康值班表', h, ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表-安康.doc', [20, 32, 20, 32]);
 }
 
-function dlDoc() {
+// 總班表 → PNG 圖片（高解析，適合 A4 橫向列印）
+function dlPng() {
   if (!DATA) return;
   var m = document.getElementById('monthSel').value.split('/');
   var title = m[0] + '年' + m[1] + '月份麻醉科總班表';
-  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
-    '<head><meta charset="utf-8"><title>' + title + '</title></head><body>' +
-    '<h2 style="text-align:center;font-family:標楷體,serif">' + title + '</h2>' +
-    buildMaster(true) + '</body></html>';
-  var blob = new Blob(['﻿' + html], { type: 'application/msword' });
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = title + '.doc';
-  a.click();
+  var el = document.querySelector('#master table');
+  if (!el) return;
+  // 暫時加上標題再截圖
+  var box = document.createElement('div');
+  box.style.cssText = 'position:absolute;left:-9999px;top:0;background:#fff;padding:16px';
+  box.innerHTML = '<div style="text-align:center;font-weight:bold;font-size:20px;margin-bottom:8px;font-family:Microsoft JhengHei">' + title + '</div>' + el.outerHTML;
+  document.body.appendChild(box);
+  html2canvas(box, { scale: 2, backgroundColor: '#ffffff' }).then(function (canvas) {
+    document.body.removeChild(box);
+    var a = document.createElement('a');
+    a.download = title + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }).catch(function () {
+    document.body.removeChild(box);
+    alert('產圖失敗，請重新整理後再試');
+  });
 }
 </script>
 </body>
