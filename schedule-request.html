@@ -71,7 +71,7 @@ var CATS = [
   { key: '休假',     color: '#8e44ad' },
   { key: '羅東聖母', color: '#7f8c8d' }
 ];
-var curCat = 0, dayCat = {}, DIM = 0;
+var curCat = 0, dayCat = {}, DIM = 0, CY = 0, CM = 0;
 
 init();
 
@@ -137,6 +137,7 @@ function loadMine() {
 function buildCal() {
   var iso = document.getElementById('month').value.split('-');
   var y = parseInt(iso[0], 10), m = parseInt(iso[1], 10);
+  CY = y; CM = m;
   DIM = new Date(y, m, 0).getDate();
   var first = new Date(y, m - 1, 1).getDay(); // 0=日
   var html = ['日', '一', '二', '三', '四', '五', '六'].map(function (w) { return '<div class="h">' + w + '</div>'; }).join('');
@@ -151,6 +152,10 @@ function buildCal() {
 
 function tapDay(d) {
   var k = CATS[curCat].key;
+  if (k === '羅東聖母' && dayCat[d] !== k) {
+    var w = new Date(CY, CM - 1, d).getDay();
+    if (w !== 1 && w !== 2) { alert('羅東聖母只有星期一、星期二，請選週一或週二的日期'); return; }
+  }
   if (dayCat[d] === k) delete dayCat[d];
   else dayCat[d] = k;
   paintDay(d);
