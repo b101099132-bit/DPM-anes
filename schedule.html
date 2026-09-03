@@ -51,38 +51,52 @@ var DATA = null, DIM = 0, Y = 0, M = 0, PDIM = 0, PY = 0, PM = 0;
 init();
 
 function init() {
-  jsonp({ action: 'schedMeta' }, function (res) {
-    var sel = document.getElementById('monthSel');
-    if (!res || !res.ok || !res.months.length) {
-      document.getElementById('status').innerHTML = '<span class="err">目前尚無已發布的班表</span>';
-      sel.innerHTML = '<option>—</option>';
-      return;
-    }
-    sel.innerHTML = res.months.map(function (m) { return '<option>' + m + '</option>'; }).join('');
-    sel.value = res.months[res.months.length - 1];
-    sel.onchange = load;
-    load();
-  });
+  document.getElementById('monthSel').onchange = function () { load(this.value); };
+  // 先用本機快取立即顯示（若有），同時向後端要最新資料
+  var last = cacheGet('schedLastMonth');
+  if (last) {
+    var cached = cacheGet('schedData_' + last);
+    if (cached) applyData(cached, true);
+  }
+  load(last || '');
 }
 
-function load() {
-  var m = document.getElementById('monthSel').value;
-  document.getElementById('status').textContent = '載入中…';
-  jsonp({ action: 'schedule', month: m }, function (res) {
+function load(month) {
+  document.getElementById('status').textContent = '更新中…';
+  var p = { action: 'schedule' };
+  if (month) p.month = month;
+  jsonp(p, function (res) {
     if (!res || !res.ok) {
       document.getElementById('status').innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>';
       return;
     }
-    DATA = res;
-    var p = m.split('/');
-    Y = parseInt(p[0], 10) + 1911; M = parseInt(p[1], 10);
-    DIM = new Date(Y, M, 0).getDate();
-    PM = M - 1; PY = Y;
-    if (PM < 1) { PM = 12; PY -= 1; }
-    PDIM = new Date(PY, PM, 0).getDate();
-    document.getElementById('status').textContent = '';
-    document.getElementById('master').innerHTML = buildMaster(false);
+    cacheSet('schedData_' + res.month, res);
+    cacheSet('schedLastMonth', res.month);
+    applyData(res, false);
   });
+}
+
+function cacheGet(k) {
+  try { var v = sessionStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+}
+function cacheSet(k, v) {
+  try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
+}
+
+function applyData(res, fromCache) {
+  DATA = res;
+  var sel = document.getElementById('monthSel');
+  var months = res.months || [res.month];
+  sel.innerHTML = months.map(function (m) { return '<option>' + m + '</option>'; }).join('');
+  sel.value = res.month;
+  var p = res.month.split('/');
+  Y = parseInt(p[0], 10) + 1911; M = parseInt(p[1], 10);
+  DIM = new Date(Y, M, 0).getDate();
+  PM = M - 1; PY = Y;
+  if (PM < 1) { PM = 12; PY -= 1; }
+  PDIM = new Date(PY, PM, 0).getDate();
+  document.getElementById('status').textContent = fromCache ? '更新中…' : '';
+  document.getElementById('master').innerHTML = buildMaster(false);
 }
 
 function abbrOf(name) {
