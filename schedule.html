@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麻醉科班表 | 耕莘醫院麻醉部</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 16px; }
+  .wrap { max-width: 1250px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 10px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  select { padding: 7px; border: 1px solid #bcd; border-radius: 6px; font-size: 1rem; }
+  .grid-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
+  th, td { border: 1px solid #cbd6e2; padding: 3px 5px; text-align: center; min-width: 32px; }
+  th { background: #eef4fa; color: #1a3c5e; }
+  td.doc { font-weight: bold; background: #f7fafd; }
+  th.we { background: #ffe9d6; }
+  .s-白班 { background: #d6e6f7; } .s-值班 { background: #f5c6c2; } .s-鏡檢 { background: #c9ede4; }
+  .s-安康 { background: #d5f0d0; } .s-聖母 { background: #e2e2e2; } .s-二線班 { background: #e3d6f2; }
+  .s-OFF { color: #bbb; } .s-休 { background: #efe0f5; color: #8e44ad; }
+  #status { color: #789; }
+  .err { color: #c0392b; font-weight: bold; }
+  .cal td { min-width: 60px; height: 40px; vertical-align: top; text-align: left; padding: 4px; }
+  .cal .n { font-size: .75rem; color: #789; }
+  .cal .who { font-weight: bold; font-size: .95rem; color: #16735f; text-align: center; display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>耕莘醫院麻醉部｜班表查詢</h1>
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label>月份</label><select id="monthSel"></select>
+      <span id="status">載入中…</span>
+    </div>
+  </div>
+
+  <div id="views" style="display:none">
+    <div class="card">
+      <h2>班表總覽</h2>
+      <div class="grid-scroll"><table id="matrix"></table></div>
+    </div>
+    <div class="card">
+      <h2>值班／安康 會診表</h2>
+      <div class="grid-scroll"><div id="consult"></div></div>
+    </div>
+    <div class="card">
+      <h2>安康值班月曆</h2>
+      <div class="grid-scroll"><table class="cal" id="akCal"></table></div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js?v=6"></script>
+<script src="common.js?v=6"></script>
+<script>
+var DATA = null, DIM = 0, Y = 0, M = 0;
+
+init();
+
+function init() {
+  jsonp({ action: 'schedMeta' }, function (res) {
+    var sel = document.getElementById('monthSel');
+    if (!res || !res.ok || !res.months.length) {
+      document.getElementById('status').innerHTML = '<span class="err">目前尚無已發布的班表</span>';
+      sel.innerHTML = '<option>—</option>';
+      return;
+    }
+    sel.innerHTML = res.months.map(function (m) { return '<option>' + m + '</option>'; }).join('');
+    sel.value = res.months[res.months.length - 1];
+    sel.onchange = load;
+    load();
+  });
+}
+
+function load() {
+  var m = document.getElementById('monthSel').value;
+  document.getElementById('status').textContent = '載入中…';
+  jsonp({ action: 'schedule', month: m }, function (res) {
+    if (!res || !res.ok) {
+      document.getElementById('status').innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>';
+      document.getElementById('views').style.display = 'none';
+      return;
+    }
+    DATA = res;
+    var p = m.split('/');
+    Y = parseInt(p[0], 10) + 1911; M = parseInt(p[1], 10);
+    DIM = new Date(Y, M, 0).getDate();
+    document.getElementById('status').textContent = '';
+    document.getElementById('views').style.display = 'block';
+    render();
+  });
+}
+
+function dow(d) { return new Date(Y, M - 1, d).getDay(); }
+var DOWTXT = ['日', '一', '二', '三', '四', '五', '六'];
+function abbrOf(name) {
+  var d = DATA.doctors.filter(function (x) { return x.name === name; })[0];
+  return d ? d.abbr : name;
+}
+function whoOn(shift, d) {
+  var names = Object.keys(DATA.roster).filter(function (n) { return String(DATA.roster[n][d - 1]) === shift; });
+  return names.length ? abbrOf(names[0]) : '';
+}
+
+function render() {
+  // 班表矩陣
+  var html = '<tr><th>醫師</th>';
+  for (var d = 1; d <= DIM; d++) {
+    var w = dow(d);
+    html += '<th' + (w === 0 || w === 6 ? ' class="we"' : '') + '>' + d + '<br>' + DOWTXT[w] + '</th>';
+  }
+  html += '</tr>';
+  DATA.doctors.forEach(function (doc) {
+    var r = DATA.roster[doc.name];
+    if (!r) return;
+    html += '<tr><td class="doc">' + doc.name + '</td>';
+    for (var d2 = 1; d2 <= DIM; d2++) {
+      var v = String(r[d2 - 1] || '');
+      html += '<td class="s-' + v + '">' + v + '</td>';
+    }
+    html += '</tr>';
+  });
+  document.getElementById('matrix').innerHTML = html;
+
+  // 會診表（兩段）
+  var ch = '';
+  [[1, 16], [17, DIM]].forEach(function (seg) {
+    ch += '<table style="margin-bottom:8px"><tr><th>日期</th>';
+    for (var d = seg[0]; d <= seg[1]; d++) ch += '<th>' + d + '</th>';
+    ch += '</tr><tr><td class="doc">總院值班</td>';
+    for (var d1 = seg[0]; d1 <= seg[1]; d1++) ch += '<td>' + whoOn('值班', d1) + '</td>';
+    ch += '</tr><tr><td class="doc">安康</td>';
+    for (var d2 = seg[0]; d2 <= seg[1]; d2++) ch += '<td>' + whoOn('安康', d2) + '</td>';
+    ch += '</tr></table>';
+  });
+  document.getElementById('consult').innerHTML = ch;
+
+  // 安康月曆
+  var ak = '<tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
+  var firstDow = (dow(1) + 6) % 7;
+  var day = 1;
+  while (day <= DIM) {
+    var rowH = '<tr>';
+    for (var col = 0; col < 7; col++) {
+      if ((day === 1 && col < firstDow) || day > DIM) { rowH += '<td></td>'; continue; }
+      rowH += '<td><span class="n">' + day + '</span><span class="who">' + whoOn('安康', day) + '</span></td>';
+      day++;
+    }
+    ak += rowH + '</tr>';
+  }
+  document.getElementById('akCal').innerHTML = ak;
+}
+</script>
+</body>
+</html>

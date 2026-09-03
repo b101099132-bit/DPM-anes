@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排班工作台 | 耕莘醫院麻醉部</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 16px; }
+  .wrap { max-width: 1250px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 10px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  select, input { padding: 7px; border: 1px solid #bcd; border-radius: 6px; font-size: .95rem; }
+  button { padding: 9px 16px; font-size: .95rem; border: 0; border-radius: 7px; background: #1a5e9e; color: #fff; cursor: pointer; margin: 2px; }
+  button.warn { background: #b34700; }
+  button.gray { background: #7a8a99; }
+  button:disabled { background: #9ab; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .grid-scroll { overflow-x: auto; }
+  table.sched { border-collapse: collapse; font-size: .78rem; white-space: nowrap; }
+  table.sched th, table.sched td { border: 1px solid #cbd6e2; padding: 2px 3px; text-align: center; min-width: 34px; }
+  table.sched th { background: #eef4fa; color: #1a3c5e; }
+  table.sched td.doc { font-weight: bold; background: #f7fafd; min-width: 64px; }
+  table.sched td.cell { cursor: pointer; height: 26px; }
+  table.sched th.we { background: #ffe9d6; }
+  table.sched td.viol { outline: 2px solid #e74c3c; outline-offset: -2px; }
+  table.sched td.prev { background: #f0f0f0; color: #999; }
+  .s-白班 { background: #d6e6f7; } .s-值班 { background: #f5c6c2; } .s-鏡檢 { background: #c9ede4; }
+  .s-安康 { background: #d5f0d0; } .s-聖母 { background: #e2e2e2; } .s-二線班 { background: #e3d6f2; }
+  .s-OFF { background: #fafafa; color: #aaa; } .s-休 { background: #efe0f5; color: #8e44ad; }
+  .pal { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .pal span { padding: 5px 12px; border-radius: 14px; border: 2px solid transparent; cursor: pointer; font-size: .85rem; }
+  .pal span.sel { border-color: #333; font-weight: bold; }
+  table.mini { border-collapse: collapse; font-size: .82rem; }
+  table.mini th, table.mini td { border: 1px solid #dde5ee; padding: 3px 8px; text-align: right; }
+  table.mini th { background: #eef4fa; }
+  table.mini td:first-child { text-align: center; font-weight: bold; }
+  .viol-list { color: #c0392b; font-size: .85rem; white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
+  .ok { color: #0a7a2f; font-weight: bold; } .err { color: #c0392b; font-weight: bold; }
+  .hint { color: #789; font-size: .8rem; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: .8rem; color: #fff; }
+  .b-pub { background: #0a7a2f; } .b-draft { background: #7a8a99; }
+  #reqTable td { text-align: left; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>排班工作台 <span id="whoBadge" class="hint"></span></h1>
+
+  <div class="card" id="loginCard">
+    <h2>登入（排班者個人碼 或 管理員通行碼）</h2>
+    <div class="row">
+      <select id="docSel"><option>載入中…</option></select>
+      <input type="password" id="pin" placeholder="個人碼" style="width:100px">
+      <span class="hint">或</span>
+      <input type="password" id="adminPass" placeholder="管理員通行碼" style="width:140px">
+      <input type="month" id="month">
+      <button onclick="login()">登入</button>
+    </div>
+    <div id="loginMsg" class="hint"></div>
+  </div>
+
+  <div id="work" style="display:none">
+    <div class="card">
+      <h2>月設定 <span id="pubBadge"></span></h2>
+      <div class="row"><label style="width:150px">國定假日（日,逗號）</label><input id="cfg_holiday" style="width:280px"></div>
+      <div class="row"><label style="width:150px">部長開會日（李代二線）</label><input id="cfg_meet" style="width:280px"></div>
+      <div class="row"><label style="width:150px">聖母不排週（週一日期）</label><input id="cfg_nost" style="width:280px"></div>
+      <div class="row"><label style="width:150px">二線不排日（三/五）</label><input id="cfg_no2" style="width:280px"></div>
+      <div class="row"><label style="width:150px">值後可接安康日</label><input id="cfg_exAk" style="width:280px"></div>
+      <div class="row"><label style="width:150px">值後可接白/鏡日</label><input id="cfg_exWh" style="width:280px"></div>
+      <button class="gray" onclick="saveSettings()">儲存月設定</button>
+      <span id="cfgMsg" class="hint"></span>
+    </div>
+
+    <div class="card">
+      <h2>要班需求彙總</h2>
+      <div class="grid-scroll"><table class="mini" id="reqTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>班表編輯（先點班別，再點格子；再點一次清除）</h2>
+      <div class="pal" id="pal"></div>
+      <div class="row">
+        <button onclick="genDraft()">自動產生草稿</button>
+        <button class="gray" onclick="runValidate()">檢核違規</button>
+        <button class="gray" onclick="clearGrid()">清空班表</button>
+        <button onclick="saveDraft(false)">儲存草稿</button>
+        <button class="warn" onclick="saveDraft(true)">儲存並發布</button>
+        <button class="gray" onclick="unpublish()">取消發布</button>
+      </div>
+      <div class="grid-scroll"><table class="sched" id="grid"></table></div>
+      <div class="hint">灰色前兩欄為上月末班別（自動帶入，供銜接檢核）。二線班預設為鄒部長，僅部長開會日需在表中排李主任二線班。</div>
+      <div id="saveMsg" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <h2>檢核結果</h2>
+      <div class="viol-list" id="violList">尚未檢核</div>
+    </div>
+
+    <div class="card">
+      <h2>統計</h2>
+      <div class="grid-scroll"><table class="mini" id="statTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Word 下載（給秘書上傳院內網）</h2>
+      <button onclick="dlHospitalDoc()">醫院格式（醫療作業表）</button>
+      <button onclick="dlAnkangDoc()">安康值班表</button>
+      <div class="hint">下載為 .doc（Word 可直接開啟編輯／另存 .docx）。</div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js?v=6"></script>
+<script src="common.js?v=6"></script>
+<script>
+var SHIFTS = ['白班', '值班', '鏡檢', '安康', '聖母', '二線班', 'OFF', '休'];
+var POINTS = { '值班': 3, '白班': 1, '鏡檢': 1, '二線班': 1, '聖母': 0, '安康': 0 };
+var EXCLUDE_GRID = ['鄒美勇']; // 部長固定二線，不入班表格
+var WB = null, GRID = {}, DIM = 0, Y = 0, M = 0, curShift = 0, VIOL = {};
+
+init();
+
+function init() {
+  jsonp({ action: 'doctorList' }, function (res) {
+    var sel = document.getElementById('docSel');
+    sel.innerHTML = (res && res.ok)
+      ? res.doctors.map(function (d) { return '<option value="' + d.name + '">' + d.name + '</option>'; }).join('')
+      : '<option>載入失敗</option>';
+  });
+  var d = new Date();
+  d.setDate(1); d.setMonth(d.getMonth() + 1);
+  document.getElementById('month').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  var hash = getPasscode();
+  if (hash) document.getElementById('adminPass').value = hash;
+  var html = '';
+  SHIFTS.forEach(function (s, i) {
+    html += '<span class="s-' + s + (i === 0 ? ' sel' : '') + '" onclick="pickShift(' + i + ')">' + s + '</span>';
+  });
+  document.getElementById('pal').innerHTML = html;
+}
+
+function pickShift(i) {
+  curShift = i;
+  document.querySelectorAll('.pal span').forEach(function (el, j) { el.classList.toggle('sel', j === i); });
+}
+
+function authParams() {
+  var ap = document.getElementById('adminPass').value.trim();
+  if (ap) return { passcode: ap };
+  return { name: document.getElementById('docSel').value, pin: document.getElementById('pin').value.trim() };
+}
+function rocM() { return isoToRoc(document.getElementById('month').value); }
+
+function login() {
+  var p = authParams();
+  p.action = 'workbench'; p.month = rocM();
+  document.getElementById('loginMsg').textContent = '載入中…';
+  jsonp(p, function (res) {
+    if (!res || !res.ok) {
+      document.getElementById('loginMsg').innerHTML = '<span class="err">' + ((res && res.error) || '登入失敗') + '</span>';
+      return;
+    }
+    WB = res;
+    var iso = document.getElementById('month').value.split('-');
+    Y = parseInt(iso[0], 10); M = parseInt(iso[1], 10);
+    DIM = new Date(Y, M, 0).getDate();
+    document.getElementById('loginMsg').textContent = '';
+    document.getElementById('work').style.display = 'block';
+    document.getElementById('whoBadge').textContent = '｜' + res.who + '｜' + rocM();
+    loadCfgToForm();
+    renderRequests();
+    GRID = {};
+    gridDoctors().forEach(function (d) {
+      GRID[d.name] = (res.roster[d.name] || Array.from({ length: 31 }, function () { return ''; })).slice(0, 31);
+    });
+    prefillLeaves();
+    renderGrid(); renderStats();
+  });
+}
+
+function gridDoctors() {
+  return WB.doctors.filter(function (d) { return EXCLUDE_GRID.indexOf(d.name) < 0; });
+}
+function reqOf(name) {
+  var r = WB.requests.filter(function (x) { return String(x[1]) === name; })[0];
+  if (!r) return null;
+  var o = {};
+  WB.reqHeaders.forEach(function (h, i) { o[h] = r[i]; });
+  return o;
+}
+function parseDays(v) {
+  return String(v == null ? '' : v).split(/[,，]/).map(function (s) { return parseInt(s, 10); })
+    .filter(function (n) { return n >= 1 && n <= 31; });
+}
+function cfgVal(h) {
+  if (!WB.cfg) return '';
+  return String(WB.cfg[WB.cfgHeaders.indexOf(h)] || '');
+}
+function loadCfgToForm() {
+  document.getElementById('cfg_holiday').value = cfgVal('國定假日');
+  document.getElementById('cfg_meet').value = cfgVal('部長開會日');
+  document.getElementById('cfg_nost').value = cfgVal('聖母不排週');
+  document.getElementById('cfg_no2').value = cfgVal('二線不排日');
+  document.getElementById('cfg_exAk').value = cfgVal('值後可安康日');
+  document.getElementById('cfg_exWh').value = cfgVal('值後可白鏡日');
+  var pub = cfgVal('狀態') === '發布';
+  document.getElementById('pubBadge').innerHTML = '<span class="badge ' + (pub ? 'b-pub">已發布' : 'b-draft">草稿') + '</span>';
+}
+function cfgSets() {
+  return {
+    holiday: parseDays(document.getElementById('cfg_holiday').value),
+    meet: parseDays(document.getElementById('cfg_meet').value),
+    nost: parseDays(document.getElementById('cfg_nost').value),
+    no2: parseDays(document.getElementById('cfg_no2').value),
+    exAk: parseDays(document.getElementById('cfg_exAk').value),
+    exWh: parseDays(document.getElementById('cfg_exWh').value)
+  };
+}
+
+function renderRequests() {
+  var html = '<tr><th>醫師</th><th>休假</th><th>胃鏡</th><th>值班(假)</th><th>值班(平)</th><th>安康</th><th>聖母</th><th>備註</th></tr>';
+  WB.doctors.forEach(function (d) {
+    var r = reqOf(d.name);
+    html += '<tr><td>' + d.name + '</td>' +
+      ['休假', '胃鏡', '耕莘值班假日', '耕莘值班平日', '安康', '羅東聖母', '備註'].map(function (h) {
+        return '<td>' + (r ? String(r[h] || '') : '') + '</td>';
+      }).join('') + '</tr>';
+  });
+  document.getElementById('reqTable').innerHTML = html;
+}
+
+function dow(d) { return new Date(Y, M - 1, d).getDay(); } // 0=日
+var DOWTXT = ['日', '一', '二', '三', '四', '五', '六'];
+
+function prevDim() {
+  var y = Y, m = M - 1;
+  if (m < 1) { m = 12; y -= 1; }
+  return new Date(y, m, 0).getDate();
+}
+function prevCell(name, back) { // back=1 上月最後一天, 2 倒數第二天
+  var r = WB.prevRoster[name];
+  if (!r) return '';
+  return String(r[prevDim() - back] || '');
+}
+
+function prefillLeaves() {
+  gridDoctors().forEach(function (d) {
+    var r = reqOf(d.name);
+    if (!r) return;
+    parseDays(r['休假']).forEach(function (day) {
+      if (day <= DIM && !GRID[d.name][day - 1]) GRID[d.name][day - 1] = '休';
+    });
+  });
+}
+
+function renderGrid() {
+  var docs = gridDoctors();
+  var html = '<tr><th>醫師</th><th class="we">' + (prevDim() - 1) + '</th><th class="we">' + prevDim() + '</th>';
+  for (var d = 1; d <= DIM; d++) {
+    var w = dow(d);
+    html += '<th' + (w === 0 || w === 6 ? ' class="we"' : '') + '>' + d + '<br>' + DOWTXT[w] + '</th>';
+  }
+  html += '</tr>';
+  docs.forEach(function (doc) {
+    html += '<tr><td class="doc">' + doc.name + '</td>';
+    html += '<td class="prev">' + prevCell(doc.name, 2) + '</td><td class="prev">' + prevCell(doc.name, 1) + '</td>';
+    for (var d = 1; d <= DIM; d++) {
+      var v = GRID[doc.name][d - 1] || '';
+      var cls = 'cell' + (v ? ' s-' + v : '') + (VIOL[doc.name + '_' + d] ? ' viol' : '');
+      html += '<td class="' + cls + '" onclick="tapCell(\'' + doc.name + '\',' + d + ')" title="' + (VIOL[doc.name + '_' + d] || '') + '">' + v + '</td>';
+    }
+    html += '</tr>';
+  });
+  // 已排/應排
+  var c = cfgSets();
+  html += '<tr><td class="doc">已排/應排</td><td class="prev"></td><td class="prev"></td>';
+  for (var d2 = 1; d2 <= DIM; d2++) {
+    var got = 0;
+    docs.forEach(function (doc) { var v = GRID[doc.name][d2 - 1]; if (v && v !== 'OFF' && v !== '休') got++; });
+    var need = requiredShifts(d2, c).length;
+    html += '<td style="' + (got !== need ? 'color:#c0392b;font-weight:bold' : 'color:#0a7a2f') + '">' + got + '/' + need + '</td>';
+  }
+  html += '</tr>';
+  document.getElementById('grid').innerHTML = html;
+}
+
+function tapCell(name, d) {
+  var s = SHIFTS[curShift];
+  GRID[name][d - 1] = (GRID[name][d - 1] === s) ? '' : s;
+  runValidate();
+}
+
+function clearGrid() {
+  gridDoctors().forEach(function (d) { GRID[d.name] = Array.from({ length: 31 }, function () { return ''; }); });
+  prefillLeaves(); VIOL = {}; renderGrid(); renderStats();
+}
+
+// ===== 每日應排班別 =====
+function requiredShifts(d, c) {
+  var w = dow(d);
+  var isHol = c.holiday.indexOf(d) >= 0;
+  var out = ['值班', '安康'];
+  var monOfWeek = d - ((w + 6) % 7); // 該週週一日期
+  var stWeek = (w === 1 || w === 2) && c.nost.indexOf(w === 1 ? d : d - 1) < 0;
+  if (isHol) {
+    if (stWeek) out.push('聖母');
+    return out;
+  }
+  if (w === 0 || w === 6) return out;
+  out.push('白班', '鏡檢');
+  if (stWeek) out.push('聖母');
+  if ((w === 3 || w === 5) && c.no2.indexOf(d) < 0 && c.meet.indexOf(d) >= 0) out.push('二線班');
+  return out;
+}
+
+// ===== 資格判斷 =====
+function eligible(name, d, s, c) {
+  var abbr = abbrOf(name);
+  var cur = GRID[name][d - 1];
+  if (cur && cur !== s) return false;
+  if (s === '值班' && (abbr === '李' || abbr === '劉')) return false;
+  if (s === '聖母' && ['李', '王', '昀', '劉'].indexOf(abbr) >= 0) return false;
+  if ((s === '白班' || s === '二線班') && abbr === '劉') return false;
+  if (abbr === '劉') {
+    if (['鏡檢', '安康'].indexOf(s) < 0) return false;
+    var mir = 0, tot = 0;
+    GRID[name].forEach(function (v) { if (v === '鏡檢') mir++; if (v && v !== 'OFF' && v !== '休') tot++; });
+    if (s === '鏡檢' && mir >= 3) return false;
+    if (tot >= 15) return false; // 劉合計上限 15
+  }
+  var yv = (d === 1) ? prevCell(name, 1) : (GRID[name][d - 2] || '');
+  if (yv === '值班') {
+    var yd = d - 1;
+    var okAk = s === '安康' && (d > 1 ? c.exAk.indexOf(yd) >= 0 : false);
+    var okWh = (s === '白班' || s === '鏡檢') && (d > 1 ? c.exWh.indexOf(yd) >= 0 : false);
+    if (!okAk && !okWh) return false;
+  }
+  if (yv === '聖母' && dow(d) === 3) return false; // 聖母後隔天週三不排
+  return true;
+}
+function abbrOf(name) {
+  var d = WB.doctors.filter(function (x) { return x.name === name; })[0];
+  return d ? d.abbr : name;
+}
+function pointsOf(name) {
+  var p = 0;
+  GRID[name].forEach(function (v) { p += POINTS[v] || 0; });
+  return p;
+}
+
+// ===== 自動排班引擎：多次隨機重排取最佳 =====
+function genDraft() {
+  var c = cfgSets();
+  var best = null, bestScore = Infinity;
+  for (var t = 0; t < 40; t++) {
+    var g = tryOnce(c);
+    var sc = scoreGrid(g, c);
+    if (sc < bestScore) { bestScore = sc; best = g; }
+  }
+  GRID = best;
+  runValidate();
+  document.getElementById('saveMsg').innerHTML = '<span class="ok">草稿已產生（可手動微調後儲存）</span>';
+}
+
+function tryOnce(c) {
+  var docs = gridDoctors().map(function (d) { return d.name; });
+  var g = {};
+  docs.forEach(function (n) { g[n] = Array.from({ length: 31 }, function () { return ''; }); });
+  var saveG = GRID; GRID = g; // eligible/points 引用 GRID
+  // 1. 休假
+  docs.forEach(function (n) {
+    var r = reqOf(n);
+    if (r) parseDays(r['休假']).forEach(function (d) { if (d <= DIM) g[n][d - 1] = '休'; });
+  });
+  // 2. 要班（指定）
+  var wants = { '值班': {}, '鏡檢': {}, '安康': {}, '聖母': {} };
+  docs.forEach(function (n) {
+    var r = reqOf(n);
+    if (!r) return;
+    parseDays(r['胃鏡']).forEach(function (d) { (wants['鏡檢'][d] = wants['鏡檢'][d] || []).push(n); });
+    parseDays(r['耕莘值班假日']).concat(parseDays(r['耕莘值班平日'])).forEach(function (d) { (wants['值班'][d] = wants['值班'][d] || []).push(n); });
+    parseDays(r['安康']).forEach(function (d) { (wants['安康'][d] = wants['安康'][d] || []).push(n); });
+    parseDays(r['羅東聖母']).forEach(function (d) { (wants['聖母'][d] = wants['聖母'][d] || []).push(n); });
+  });
+  // 3. 部長開會日 → 李二線
+  c.meet.forEach(function (d) {
+    if (d <= DIM && !g[nameOfAbbr('李')][d - 1]) g[nameOfAbbr('李')][d - 1] = '二線班';
+  });
+  // 4. 聖母週（一+二同醫師）
+  for (var d = 1; d <= DIM; d++) {
+    if (dow(d) !== 1) continue;
+    if (c.nost.indexOf(d) >= 0) continue;
+    var tue = d + 1;
+    var cands = docs.filter(function (n) {
+      return eligible(n, d, '聖母', c) && (tue > DIM || eligible(n, tue, '聖母', c));
+    });
+    var pref = (wants['聖母'][d] || []).filter(function (n) { return cands.indexOf(n) >= 0; });
+    var pick = pref.length ? pref[0] : (cands.length ? shuffle(cands)[0] : null);
+    if (pick) {
+      g[pick][d - 1] = '聖母';
+      if (tue <= DIM) g[pick][tue - 1] = '聖母';
+    }
+  }
+  // 5. 逐日排班
+  for (var day = 1; day <= DIM; day++) {
+    // 值班隔天 OFF
+    docs.forEach(function (n) {
+      var yv = (day === 1) ? prevCell(n, 1) : g[n][day - 2];
+      if (yv === '值班' && !g[n][day - 1] && c.exAk.indexOf(day - 1) < 0 && c.exWh.indexOf(day - 1) < 0) {
+        g[n][day - 1] = 'OFF';
+      }
+    });
+    var todo = requiredShifts(day, c).filter(function (s) {
+      return s !== '聖母' && s !== '二線班' && !docs.some(function (n) { return g[n][day - 1] === s; });
+    });
+    while (todo.length) {
+      // 候選人最少的班別優先排（避免稀缺人力被其他班先佔走）
+      var s = null, cands = null;
+      todo.forEach(function (s2) {
+        var c2 = docs.filter(function (n) { return eligible(n, day, s2, c); });
+        if (cands === null || c2.length < cands.length) { cands = c2; s = s2; }
+      });
+      todo.splice(todo.indexOf(s), 1);
+      if (!cands.length) continue;
+      var pref = (wants[s] && wants[s][day] || []).filter(function (n) { return cands.indexOf(n) >= 0; });
+      var pick = null; // 每輪重置（避免沿用前一班別的人選）
+      if (pref.length) pick = pref[0];
+      else if (s === '安康') {
+        var liu = nameOfAbbr('劉');
+        var liuTotal = g[liu] ? g[liu].filter(function (v) { return v && v !== 'OFF' && v !== '休'; }).length : 99;
+        if (cands.indexOf(liu) >= 0 && liuTotal < 15 && Math.random() < 0.75) pick = liu;
+      }
+      if (!pick) {
+        var sorted = shuffle(cands).sort(function (a, b) { return pointsOf(a) - pointsOf(b); });
+        pick = sorted[0];
+      }
+      g[pick][day - 1] = s;
+      if (s === '值班' && day < DIM && !g[pick][day] && c.exAk.indexOf(day) < 0 && c.exWh.indexOf(day) < 0) {
+        g[pick][day] = 'OFF';
+      }
+    }
+  }
+  GRID = saveG;
+  return g;
+}
+function nameOfAbbr(a) {
+  var d = WB.doctors.filter(function (x) { return x.abbr === a; })[0];
+  return d ? d.name : a;
+}
+function shuffle(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+function scoreGrid(g, c) {
+  var saveG = GRID; GRID = g;
+  var v = collectViolations(c).length;
+  var pts = gridDoctors().map(function (d) { return abbrOf(d.name) === '劉' || abbrOf(d.name) === '李' ? null : pointsOf(d.name); })
+    .filter(function (x) { return x !== null; });
+  var avg = pts.reduce(function (a, b) { return a + b; }, 0) / (pts.length || 1);
+  var spread = pts.reduce(function (a, b) { return a + Math.abs(b - avg); }, 0);
+  GRID = saveG;
+  return v * 100 + spread;
+}
+
+// ===== 違規檢核 =====
+function collectViolations(c) {
+  var out = [];
+  var docs = gridDoctors().map(function (d) { return d.name; });
+  for (var d = 1; d <= DIM; d++) {
+    var seen = {};
+    var req = requiredShifts(d, c);
+    docs.forEach(function (n) {
+      var v = GRID[n][d - 1];
+      if (!v || v === 'OFF' || v === '休') return;
+      var abbr = abbrOf(n);
+      if (seen[v]) out.push({ n: n, d: d, msg: d + '日 ' + v + ' 重複（' + seen[v] + '/' + abbr + '）' });
+      seen[v] = abbr;
+      if (req.indexOf(v) < 0 && v !== '二線班') out.push({ n: n, d: d, msg: d + '日不應排「' + v + '」（' + abbr + '）' });
+      if (v === '值班' && (abbr === '李' || abbr === '劉')) out.push({ n: n, d: d, msg: abbr + '不可值班（' + d + '日）' });
+      if (v === '聖母' && ['李', '王', '昀', '劉'].indexOf(abbr) >= 0) out.push({ n: n, d: d, msg: abbr + '不可聖母（' + d + '日）' });
+      if (abbr === '劉' && ['鏡檢', '安康'].indexOf(v) < 0) out.push({ n: n, d: d, msg: '劉只能鏡檢/安康（' + d + '日排' + v + '）' });
+      var yv = (d === 1) ? prevCell(n, 1) : GRID[n][d - 2];
+      if (yv === '值班') {
+        var okAk = v === '安康' && c.exAk.indexOf(d - 1) >= 0;
+        var okWh = (v === '白班' || v === '鏡檢') && c.exWh.indexOf(d - 1) >= 0;
+        if (!okAk && !okWh) out.push({ n: n, d: d, msg: abbr + ' 值班隔天不可排班（' + d + '日）' });
+      }
+      if (yv === '聖母' && dow(d) === 3) out.push({ n: n, d: d, msg: abbr + ' 聖母後週三不排班（' + d + '日）' });
+    });
+    req.forEach(function (s) {
+      if (s === '二線班') return;
+      if (!docs.some(function (n) { return GRID[n][d - 1] === s; })) out.push({ n: '', d: d, msg: d + '日缺「' + s + '」' });
+    });
+  }
+  var liu = nameOfAbbr('劉');
+  if (GRID[liu]) {
+    var mir = GRID[liu].filter(function (v) { return v === '鏡檢'; }).length;
+    var tot = GRID[liu].filter(function (v) { return v && v !== 'OFF' && v !== '休'; }).length;
+    if (mir > 3) out.push({ n: liu, d: 0, msg: '劉鏡檢 ' + mir + ' 班（上限3）' });
+    if (tot < 10 || tot > 15) out.push({ n: liu, d: 0, msg: '劉總班數 ' + tot + '（應10–15）' });
+  }
+  return out;
+}
+
+function runValidate() {
+  var c = cfgSets();
+  var list = collectViolations(c);
+  VIOL = {};
+  list.forEach(function (v) { if (v.n && v.d) VIOL[v.n + '_' + v.d] = v.msg; });
+  document.getElementById('violList').innerHTML = list.length
+    ? list.map(function (v) { return '✗ ' + v.msg; }).join('\n')
+    : '<span class="ok">✓ 無違規</span>';
+  renderGrid(); renderStats();
+}
+
+function renderStats() {
+  var docs = gridDoctors();
+  var cols = ['值班', '白班', '鏡檢', '二線班', '安康', '聖母', '休', '總班數'];
+  var html = '<tr><th>醫師</th>' + cols.map(function (s) { return '<th>' + s + '</th>'; }).join('') +
+    (WB.isAdmin ? '<th>總點值</th>' : '') + '</tr>';
+  docs.forEach(function (d) {
+    var cnt = {};
+    GRID[d.name].forEach(function (v) { if (v) cnt[v] = (cnt[v] || 0) + 1; });
+    var tot = GRID[d.name].filter(function (v) { return v && v !== 'OFF' && v !== '休'; }).length;
+    html += '<tr><td>' + d.name + '</td>' + cols.map(function (s) {
+      return '<td>' + (s === '總班數' ? tot : (cnt[s] || 0)) + '</td>';
+    }).join('') + (WB.isAdmin ? '<td><b>' + pointsOf(d.name) + '</b></td>' : '') + '</tr>';
+  });
+  document.getElementById('statTable').innerHTML = html;
+}
+
+// ===== 儲存/發布 =====
+function saveSettings(cbAfter) {
+  var p = authParams();
+  var data = {
+    '國定假日': document.getElementById('cfg_holiday').value.trim(),
+    '部長開會日': document.getElementById('cfg_meet').value.trim(),
+    '聖母不排週': document.getElementById('cfg_nost').value.trim(),
+    '二線不排日': document.getElementById('cfg_no2').value.trim(),
+    '值後可安康日': document.getElementById('cfg_exAk').value.trim(),
+    '值後可白鏡日': document.getElementById('cfg_exWh').value.trim()
+  };
+  fetch(API_URL, { method: 'POST', mode: 'no-cors',
+    body: new URLSearchParams(Object.assign({ action: 'saveSettings', month: rocM(), data: JSON.stringify(data) }, p)) });
+  document.getElementById('cfgMsg').textContent = '已送出儲存';
+  if (typeof cbAfter === 'function') setTimeout(cbAfter, 1200);
+}
+
+function saveDraft(alsoPublish) {
+  var p = authParams();
+  saveSettings(function () {
+    fetch(API_URL, { method: 'POST', mode: 'no-cors',
+      body: new URLSearchParams(Object.assign({ action: 'saveDraft', month: rocM(), data: JSON.stringify(GRID) }, p)) });
+    var after = function () {
+      if (alsoPublish) {
+        fetch(API_URL, { method: 'POST', mode: 'no-cors',
+          body: new URLSearchParams(Object.assign({ action: 'publish', month: rocM(), op: 'publish' }, p)) });
+      }
+      setTimeout(verifySave, 2500);
+    };
+    setTimeout(after, 1500);
+  });
+  document.getElementById('saveMsg').textContent = '儲存中…';
+}
+
+function verifySave() {
+  var p = authParams();
+  p.action = 'workbench'; p.month = rocM();
+  jsonp(p, function (res) {
+    if (res && res.ok) {
+      WB.cfg = res.cfg; WB.roster = res.roster;
+      loadCfgToForm();
+      var okRows = Object.keys(GRID).every(function (n) {
+        var saved = res.roster[n] || [];
+        return GRID[n].every(function (v, i) { return String(v || '') === String(saved[i] || ''); });
+      });
+      document.getElementById('saveMsg').innerHTML = okRows
+        ? '<span class="ok">✓ 已儲存' + (cfgValLive(res) === '發布' ? '並發布' : '') + '</span>'
+        : '<span class="err">回讀驗證未通過，請再按一次儲存</span>';
+    } else {
+      document.getElementById('saveMsg').innerHTML = '<span class="err">回讀失敗</span>';
+    }
+  });
+}
+function cfgValLive(res) {
+  return res.cfg ? String(res.cfg[res.cfgHeaders.indexOf('狀態')] || '') : '';
+}
+
+function unpublish() {
+  var p = authParams();
+  fetch(API_URL, { method: 'POST', mode: 'no-cors',
+    body: new URLSearchParams(Object.assign({ action: 'publish', month: rocM(), op: 'unpublish' }, p)) });
+  document.getElementById('saveMsg').textContent = '已送出取消發布';
+  setTimeout(verifySave, 2500);
+}
+
+// ===== Word 下載（Word 相容 HTML → .doc）=====
+function rocYM() { var p = rocM().split('/'); return { y: p[0], m: String(parseInt(p[1], 10)) }; }
+function shiftAbbr(s, d) {
+  var n = gridDoctors().map(function (x) { return x.name; }).filter(function (n2) { return GRID[n2][d - 1] === s; })[0];
+  return n ? abbrOf(n) : '';
+}
+function docBlob(title, bodyHtml, filename) {
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
+    '<head><meta charset="utf-8"><title>' + title + '</title>' +
+    '<style>body{font-family:標楷體,DFKai-SB,serif;font-size:14pt}table{border-collapse:collapse;width:100%}' +
+    'td,th{border:1px solid #000;padding:3px 5px;text-align:center;font-size:11pt}h1{font-size:16pt;text-align:center}h2{font-size:13pt}</style>' +
+    '</head><body>' + bodyHtml + '</body></html>';
+  var blob = new Blob(['﻿' + html], { type: 'application/msword' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function dlHospitalDoc() {
+  var ym = rocYM();
+  var docs = WB.doctors;
+  var h = '<h1>麻醉部' + ym.y + '年' + ('0' + ym.m).slice(-2) + '月份醫師醫療作業表</h1>';
+  h += '<h2>一、人力編制：</h2><table><tr><th>專科</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th></tr>';
+  for (var i = 0; i < docs.length; i += 3) {
+    h += '<tr><td>' + (i === 0 ? '麻醉科' : '') + '</td>';
+    for (var j = 0; j < 3; j++) {
+      var d = docs[i + j];
+      h += d ? '<td>' + d.name + '</td><td>' + d.ext + '<br>手機：' + d.phone + '</td>' : '<td></td><td></td>';
+    }
+    h += '</tr>';
+  }
+  h += '</table><p>備註：</p>';
+  h += '<h2>二、主治醫師值班、會診表：</h2>';
+  [[1, 16], [17, DIM]].forEach(function (seg) {
+    h += '<table><tr><th>日期</th>';
+    for (var d = seg[0]; d <= seg[1]; d++) h += '<th>' + d + '</th>';
+    h += '</tr><tr><td>總院<br>值班</td>';
+    for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + shiftAbbr('值班', d1) + '</td>';
+    h += '</tr><tr><td>安康</td>';
+    for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + shiftAbbr('安康', d2) + '</td>';
+    h += '</tr></table><br>';
+  });
+  h += '<p>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
+  h += '<h2>四、科內學術活動總表：</h2><table><tr><th>時間</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th></tr>' +
+    '<tr><td>07:30～09:00</td><td>雜誌討論會</td><td></td><td></td><td>臨床討論會</td><td></td><td></td></tr>' +
+    '<tr><td>09:00～12:00</td><td>臨床麻醉教學</td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>12:00～13:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>13:00～14:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>13:00～14:30</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>17:00～18:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>' +
+    '<p>備註：每月第三週週四舉行臨床討論會</p>';
+  h += '<h2>五、注意事項：</h2><p>各醫療科總醫師或書記於每月28日前(若遇週六或假日則提前1-2日)，將該科次月「各科部醫師醫療作業表」電子檔案送交教研部。</p>';
+  docBlob('醫療作業表', h, ym.y + '-' + ('0' + ym.m).slice(-2) + '醫院格式.doc');
+}
+
+function dlAnkangDoc() {
+  var ym = rocYM();
+  var h = '<h1>' + ym.y + '年' + ('0' + ym.m).slice(-2) + '月份麻醉科主治醫師值班表</h1>';
+  h += '<table><tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
+  var firstDow = (dow(1) + 6) % 7; // 0=一
+  var day = 1;
+  while (day <= DIM) {
+    var nums = '', names = '';
+    for (var col = 0; col < 7; col++) {
+      var show = (day === 1 && col < firstDow) || day > DIM ? '' : day;
+      if (show !== '') {
+        nums += '<td>' + show + '</td>';
+        names += '<td>' + shiftAbbr('安康', day) + '</td>';
+        day++;
+      } else {
+        nums += '<td></td>'; names += '<td></td>';
+      }
+    }
+    h += '<tr>' + nums + '</tr><tr>' + names + '</tr>';
+  }
+  h += '</table><p style="font-size:11pt">';
+  WB.doctors.forEach(function (d) {
+    h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
+  });
+  h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';
+  docBlob('安康值班表', h, ym.y + '年' + ('0' + ym.m).slice(-2) + '月份麻醉科主治醫師值班表-安康.doc');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排班要班填報 | 耕莘醫院麻醉部</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; color: #1a3c5e; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 12px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  select, input[type=password], input[type=month] { padding: 8px; border: 1px solid #bcd; border-radius: 6px; font-size: 1rem; }
+  button { padding: 10px 18px; font-size: 1rem; border: 0; border-radius: 8px; background: #1a5e9e; color: #fff; cursor: pointer; }
+  button:disabled { background: #9ab; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .cat { padding: 6px 12px; border-radius: 16px; border: 2px solid transparent; cursor: pointer; font-size: .85rem; color: #fff; opacity: .55; }
+  .cat.sel { opacity: 1; border-color: #333; font-weight: bold; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal .h { text-align: center; font-size: .8rem; color: #789; padding: 4px 0; }
+  .day { border: 1px solid #dde5ee; border-radius: 6px; min-height: 52px; padding: 3px 4px; cursor: pointer; font-size: .8rem; position: relative; background: #fff; user-select: none; }
+  .day .n { font-weight: bold; color: #345; }
+  .day .tag { display: block; margin-top: 2px; border-radius: 4px; color: #fff; text-align: center; font-size: .72rem; padding: 1px 0; }
+  .day.we { background: #f7fafd; }
+  .day.blank { visibility: hidden; }
+  textarea { width: 100%; box-sizing: border-box; border: 1px solid #bcd; border-radius: 6px; padding: 8px; font-size: .95rem; font-family: inherit; }
+  #result { margin-top: 10px; white-space: pre-wrap; min-height: 1.2em; }
+  .ok { color: #0a7a2f; font-weight: bold; }
+  .err { color: #c0392b; font-weight: bold; }
+  .hint { color: #789; font-size: .8rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>耕莘醫院麻醉部｜排班要班填報</h1>
+
+  <div class="card" id="loginCard">
+    <h2>身分確認</h2>
+    <div class="row">
+      <select id="docSel"><option>載入中…</option></select>
+      <input type="password" id="pin" placeholder="個人碼" autocomplete="off" style="width:110px">
+      <input type="month" id="month">
+      <button onclick="loadMine()">登入載入</button>
+    </div>
+    <div id="loginMsg" class="hint"></div>
+  </div>
+
+  <div id="editArea" style="display:none">
+    <div class="card">
+      <h2><span id="whoTitle"></span>：點選需求類別後，在月曆點日期（再點一次取消）</h2>
+      <div class="cats" id="cats"></div>
+      <div class="cal" id="cal"></div>
+      <div class="hint" style="margin-top:8px">同一天只能一種需求；改選其他類別再點該日期即可覆蓋。</div>
+    </div>
+    <div class="card">
+      <h2>備註（自由填寫，例：5,8不值班可排其他班）</h2>
+      <textarea id="note" rows="2"></textarea>
+    </div>
+    <div class="card">
+      <button id="submitBtn" onclick="submitReq()">送出需求</button>
+      <div id="result"></div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js?v=6"></script>
+<script src="common.js?v=6"></script>
+<script>
+var CATS = [
+  { key: '休假',        color: '#8e44ad' },
+  { key: '胃鏡',        color: '#2980b9' },
+  { key: '耕莘值班假日', color: '#c0392b' },
+  { key: '耕莘值班平日', color: '#e67e22' },
+  { key: '安康',        color: '#16a085' },
+  { key: '羅東聖母',    color: '#7f8c8d' }
+];
+var curCat = 0, dayCat = {}, DIM = 0;
+
+init();
+
+function init() {
+  jsonp({ action: 'doctorList' }, function (res) {
+    var sel = document.getElementById('docSel');
+    if (res && res.ok) {
+      sel.innerHTML = res.doctors.map(function (d) {
+        return '<option value="' + d.name + '">' + d.name + '</option>';
+      }).join('');
+    } else {
+      sel.innerHTML = '<option>載入失敗</option>';
+    }
+  });
+  var d = new Date();
+  d.setDate(1); d.setMonth(d.getMonth() + 1); // 預設下個月
+  document.getElementById('month').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  var html = '';
+  CATS.forEach(function (c, i) {
+    html += '<span class="cat' + (i === 0 ? ' sel' : '') + '" style="background:' + c.color + '" onclick="pickCat(' + i + ')">' + c.key + '</span>';
+  });
+  document.getElementById('cats').innerHTML = html;
+}
+
+function pickCat(i) {
+  curCat = i;
+  document.querySelectorAll('.cat').forEach(function (el, j) { el.classList.toggle('sel', j === i); });
+}
+
+function rocM() { return isoToRoc(document.getElementById('month').value); }
+
+function loadMine() {
+  var name = document.getElementById('docSel').value;
+  var pin = document.getElementById('pin').value.trim();
+  var msg = document.getElementById('loginMsg');
+  if (!pin) { msg.innerHTML = '<span class="err">請輸入個人碼</span>'; return; }
+  msg.textContent = '載入中…';
+  jsonp({ action: 'myRequest', name: name, pin: pin, month: rocM() }, function (res) {
+    if (!res || !res.ok) {
+      msg.innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>';
+      return;
+    }
+    msg.innerHTML = '<span class="ok">身分確認成功</span>';
+    document.getElementById('editArea').style.display = 'block';
+    document.getElementById('whoTitle').textContent = name + '｜' + rocM() + ' 需求';
+    dayCat = {};
+    document.getElementById('note').value = '';
+    if (res.row) {
+      CATS.forEach(function (c) {
+        var i = res.headers.indexOf(c.key === '休假' ? '休假' : c.key);
+        var v = String(res.row[i] || '');
+        v.split(',').forEach(function (s) {
+          var n = parseInt(s, 10);
+          if (n >= 1 && n <= 31) dayCat[n] = c.key;
+        });
+      });
+      document.getElementById('note').value = res.row[res.headers.indexOf('備註')] || '';
+    }
+    buildCal();
+  });
+}
+
+function buildCal() {
+  var iso = document.getElementById('month').value.split('-');
+  var y = parseInt(iso[0], 10), m = parseInt(iso[1], 10);
+  DIM = new Date(y, m, 0).getDate();
+  var first = new Date(y, m - 1, 1).getDay(); // 0=日
+  var html = ['日', '一', '二', '三', '四', '五', '六'].map(function (w) { return '<div class="h">' + w + '</div>'; }).join('');
+  for (var b = 0; b < first; b++) html += '<div class="day blank"></div>';
+  for (var d = 1; d <= DIM; d++) {
+    var dow = new Date(y, m - 1, d).getDay();
+    html += '<div class="day' + (dow === 0 || dow === 6 ? ' we' : '') + '" id="day' + d + '" onclick="tapDay(' + d + ')"><span class="n">' + d + '</span><span class="tag" id="tag' + d + '"></span></div>';
+  }
+  document.getElementById('cal').innerHTML = html;
+  for (var i = 1; i <= DIM; i++) paintDay(i);
+}
+
+function tapDay(d) {
+  var k = CATS[curCat].key;
+  if (dayCat[d] === k) delete dayCat[d];
+  else dayCat[d] = k;
+  paintDay(d);
+}
+
+function paintDay(d) {
+  var tag = document.getElementById('tag' + d);
+  if (!tag) return;
+  var k = dayCat[d];
+  if (!k) { tag.textContent = ''; tag.style.background = ''; return; }
+  var c = CATS.filter(function (x) { return x.key === k; })[0];
+  tag.textContent = (k === '休假') ? '休' : k;
+  tag.style.background = c.color;
+}
+
+function submitReq() {
+  var name = document.getElementById('docSel').value;
+  var pin = document.getElementById('pin').value.trim();
+  var data = { '備註': document.getElementById('note').value.trim() };
+  CATS.forEach(function (c) {
+    var days = [];
+    for (var d = 1; d <= DIM; d++) if (dayCat[d] === c.key) days.push(d);
+    data[c.key] = days.join(',');
+  });
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  showResult('送出中…', null);
+  fetch(API_URL, { method: 'POST', mode: 'no-cors',
+    body: new URLSearchParams({ action: 'saveRequest', name: name, pin: pin, month: rocM(), data: JSON.stringify(data) }) });
+  setTimeout(function () {
+    jsonp({ action: 'myRequest', name: name, pin: pin, month: rocM() }, function (res) {
+      btn.disabled = false;
+      if (res && res.ok && res.row && String(res.row[res.headers.indexOf('休假')] || '') === data['休假']) {
+        showResult('✓ ' + rocM() + ' 需求已送出，排班時會納入考量', true);
+      } else {
+        showResult('回讀驗證未通過，請再送出一次', false);
+      }
+    });
+  }, 3000);
+}
+
+function showResult(msg, ok) {
+  var el = document.getElementById('result');
+  el.innerHTML = ok === null ? msg : '<span class="' + (ok ? 'ok' : 'err') + '">' + msg + '</span>';
+}
+</script>
+</body>
+</html>

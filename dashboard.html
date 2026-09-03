@@ -27,6 +27,7 @@
   <h1>耕莘醫院麻醉部管理系統｜管理儀表板
     <a class="form-link" href="#" id="formLink">→ 前往填報頁</a>
     <a class="form-link" href="#" id="reportLink">→ 分析報表</a>
+    <a class="form-link" href="#" id="schedLink">→ 排班工作台</a>
   </h1>
   <div id="status">載入中…</div>
 
@@ -64,6 +65,7 @@ function init() {
   if (!code) { location.href = 'index.html'; return; }
   document.getElementById('formLink').href = 'form.html#' + encodeURIComponent(code);
   document.getElementById('reportLink').href = 'report.html#' + encodeURIComponent(code);
+  document.getElementById('schedLink').href = 'schedule-admin.html#' + encodeURIComponent(code);
   jsonp({ action: 'auth', passcode: code }, function (res) {
     if (!res || !res.ok || res.role !== 'admin') {
       document.getElementById('status').innerHTML = '<span class="err">僅限管理員瀏覽</span>';
