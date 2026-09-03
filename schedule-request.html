@@ -54,7 +54,7 @@
       <div class="hint" style="margin-top:8px">同一天只能一種需求；改選其他類別再點該日期即可覆蓋。</div>
     </div>
     <div class="card">
-      <h2>備註（自由填寫，例：5,8不值班可排其他班）</h2>
+      <h2>備註（自由填寫，其他特殊需求請寫在這裡）</h2>
       <textarea id="note" rows="2"></textarea>
     </div>
     <div class="card">
@@ -68,12 +68,8 @@
 <script src="common.js?v=6"></script>
 <script>
 var CATS = [
-  { key: '休假',        color: '#8e44ad' },
-  { key: '胃鏡',        color: '#2980b9' },
-  { key: '耕莘值班假日', color: '#c0392b' },
-  { key: '耕莘值班平日', color: '#e67e22' },
-  { key: '安康',        color: '#16a085' },
-  { key: '羅東聖母',    color: '#7f8c8d' }
+  { key: '休假',     color: '#8e44ad' },
+  { key: '羅東聖母', color: '#7f8c8d' }
 ];
 var curCat = 0, dayCat = {}, DIM = 0;
 

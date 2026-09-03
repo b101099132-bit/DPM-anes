@@ -221,11 +221,11 @@ function cfgSets() {
 }
 
 function renderRequests() {
-  var html = '<tr><th>醫師</th><th>休假</th><th>胃鏡</th><th>值班(假)</th><th>值班(平)</th><th>安康</th><th>聖母</th><th>備註</th></tr>';
+  var html = '<tr><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th></tr>';
   WB.doctors.forEach(function (d) {
     var r = reqOf(d.name);
     html += '<tr><td>' + d.name + '</td>' +
-      ['休假', '胃鏡', '耕莘值班假日', '耕莘值班平日', '安康', '羅東聖母', '備註'].map(function (h) {
+      ['休假', '羅東聖母', '備註'].map(function (h) {
         return '<td>' + (r ? String(r[h] || '') : '') + '</td>';
       }).join('') + '</tr>';
   });
