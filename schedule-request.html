@@ -76,13 +76,23 @@ var curCat = 0, dayCat = {}, DIM = 0, CY = 0, CM = 0;
 init();
 
 function init() {
+  var sel = document.getElementById('docSel');
+  function fillSel(list) {
+    var cur = sel.value;
+    sel.innerHTML = list.map(function (d) {
+      return '<option value="' + d.name + '">' + d.name + '</option>';
+    }).join('');
+    if (cur) sel.value = cur;
+  }
+  // 名單先用本機快取即時顯示，背景再向後端要最新
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem('dpmDocList') || 'null'); } catch (e) {}
+  if (cached && cached.length) fillSel(cached);
   jsonp({ action: 'doctorList' }, function (res) {
-    var sel = document.getElementById('docSel');
     if (res && res.ok) {
-      sel.innerHTML = res.doctors.map(function (d) {
-        return '<option value="' + d.name + '">' + d.name + '</option>';
-      }).join('');
-    } else {
+      fillSel(res.doctors);
+      try { localStorage.setItem('dpmDocList', JSON.stringify(res.doctors)); } catch (e) {}
+    } else if (!cached) {
       sel.innerHTML = '<option>載入失敗</option>';
     }
   });
