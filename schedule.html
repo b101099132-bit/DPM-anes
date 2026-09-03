@@ -9,22 +9,20 @@
   .wrap { max-width: 1250px; margin: 0 auto; }
   h1 { font-size: 1.25rem; color: #1a3c5e; }
   .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 16px 18px; margin-bottom: 14px; }
-  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 10px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
   select { padding: 7px; border: 1px solid #bcd; border-radius: 6px; font-size: 1rem; }
+  button { padding: 9px 16px; font-size: .95rem; border: 0; border-radius: 7px; background: #1a5e9e; color: #fff; cursor: pointer; }
   .grid-scroll { overflow-x: auto; }
-  table { border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
-  th, td { border: 1px solid #cbd6e2; padding: 3px 5px; text-align: center; min-width: 32px; }
-  th { background: #eef4fa; color: #1a3c5e; }
-  td.doc { font-weight: bold; background: #f7fafd; }
-  th.we { background: #ffe9d6; }
-  .s-白班 { background: #d6e6f7; } .s-值班 { background: #f5c6c2; } .s-鏡檢 { background: #c9ede4; }
-  .s-安康 { background: #d5f0d0; } .s-聖母 { background: #e2e2e2; } .s-二線班 { background: #e3d6f2; }
-  .s-OFF { color: #bbb; } .s-休 { background: #efe0f5; color: #8e44ad; }
   #status { color: #789; }
   .err { color: #c0392b; font-weight: bold; }
-  .cal td { min-width: 60px; height: 40px; vertical-align: top; text-align: left; padding: 4px; }
-  .cal .n { font-size: .75rem; color: #789; }
-  .cal .who { font-weight: bold; font-size: .95rem; color: #16735f; text-align: center; display: block; }
+  /* 總班表 */
+  table.master { border-collapse: collapse; font-size: .85rem; white-space: nowrap; }
+  table.master th, table.master td { border: 1px solid #999; padding: 2px 6px; text-align: center; min-width: 26px; }
+  table.master th { background: #eef4fa; color: #1a3c5e; }
+  td.lbl { font-weight: bold; background: #f7fafd; text-align: left; min-width: 78px; }
+  td.datehead { font-weight: bold; background: #fdfdf2; }
+  td.gray { background: #a6a6a6; }
+  td.prevday { color: #888; background: #f4f4f4; }
+  td.prevday.datehead { color: #666; }
 </style>
 </head>
 <body>
@@ -33,30 +31,22 @@
   <div class="card">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <label>月份</label><select id="monthSel"></select>
+      <button onclick="dlDoc()">總班表（Word）</button>
+      <button onclick="dlHospitalDoc()">醫院格式-醫療作業表（Word）</button>
+      <button onclick="dlAnkangDoc()">安康值班表（Word）</button>
       <span id="status">載入中…</span>
     </div>
   </div>
 
-  <div id="views" style="display:none">
-    <div class="card">
-      <h2>班表總覽</h2>
-      <div class="grid-scroll"><table id="matrix"></table></div>
-    </div>
-    <div class="card">
-      <h2>值班／安康 會診表</h2>
-      <div class="grid-scroll"><div id="consult"></div></div>
-    </div>
-    <div class="card">
-      <h2>安康值班月曆</h2>
-      <div class="grid-scroll"><table class="cal" id="akCal"></table></div>
-    </div>
+  <div class="card">
+    <div class="grid-scroll" id="master"></div>
   </div>
 </div>
 
 <script src="config.js?v=6"></script>
 <script src="common.js?v=6"></script>
 <script>
-var DATA = null, DIM = 0, Y = 0, M = 0;
+var DATA = null, DIM = 0, Y = 0, M = 0, PDIM = 0, PY = 0, PM = 0;
 
 init();
 
@@ -81,77 +71,214 @@ function load() {
   jsonp({ action: 'schedule', month: m }, function (res) {
     if (!res || !res.ok) {
       document.getElementById('status').innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>';
-      document.getElementById('views').style.display = 'none';
       return;
     }
     DATA = res;
     var p = m.split('/');
     Y = parseInt(p[0], 10) + 1911; M = parseInt(p[1], 10);
     DIM = new Date(Y, M, 0).getDate();
+    PM = M - 1; PY = Y;
+    if (PM < 1) { PM = 12; PY -= 1; }
+    PDIM = new Date(PY, PM, 0).getDate();
     document.getElementById('status').textContent = '';
-    document.getElementById('views').style.display = 'block';
-    render();
+    document.getElementById('master').innerHTML = buildMaster(false);
   });
 }
 
-function dow(d) { return new Date(Y, M - 1, d).getDay(); }
-var DOWTXT = ['日', '一', '二', '三', '四', '五', '六'];
 function abbrOf(name) {
   var d = DATA.doctors.filter(function (x) { return x.name === name; })[0];
   return d ? d.abbr : name;
 }
-function whoOn(shift, d) {
-  var names = Object.keys(DATA.roster).filter(function (n) { return String(DATA.roster[n][d - 1]) === shift; });
+// day > 0 本月；day <= 0 代表上月（0=上月最後一天）
+function whoOn(shift, day) {
+  var roster = day > 0 ? DATA.roster : DATA.prevRoster;
+  var idx = day > 0 ? day - 1 : PDIM + day - 1;
+  var names = Object.keys(roster).filter(function (n) { return String(roster[n][idx] || '') === shift; });
   return names.length ? abbrOf(names[0]) : '';
 }
+function dispDay(day) { return day > 0 ? day : PDIM + day; }
+function cfgList(h) {
+  if (!DATA.cfg) return [];
+  return String(DATA.cfg[DATA.cfgHeaders.indexOf(h)] || '').split(/[,，]/)
+    .map(function (s) { return parseInt(s, 10); }).filter(function (n) { return n >= 1; });
+}
 
-function render() {
-  // 班表矩陣
-  var html = '<tr><th>醫師</th>';
-  for (var d = 1; d <= DIM; d++) {
-    var w = dow(d);
-    html += '<th' + (w === 0 || w === 6 ? ' class="we"' : '') + '>' + d + '<br>' + DOWTXT[w] + '</th>';
+// D 欄（二線）：本月格子有二線班者優先，否則預設鄒；二線不排日留空；上月日一律只看格子，否則鄒
+function secondLine(day) {
+  var g = whoOn('二線班', day);
+  if (g) return g;
+  if (day > 0 && cfgList('二線不排日').indexOf(day) >= 0) return '';
+  return '鄒';
+}
+
+function buildMaster(forDoc) {
+  var bd = forDoc ? ' style="border:1px solid #000;padding:2px 6px;text-align:center"' : '';
+  var lbl = forDoc ? ' style="border:1px solid #000;padding:2px 6px;font-weight:bold;text-align:left"' : ' class="lbl"';
+  var dh = forDoc ? ' style="border:1px solid #000;padding:2px 6px;text-align:center;font-weight:bold"' : ' class="datehead"';
+  var gray = forDoc ? ' style="border:1px solid #000;background:#a6a6a6"' : ' class="gray"';
+  function td(cls, colspan, content) {
+    return '<td' + cls + (colspan > 1 ? ' colspan="' + colspan + '"' : '') + '>' + (content || '') + '</td>';
   }
-  html += '</tr>';
-  DATA.doctors.forEach(function (doc) {
-    var r = DATA.roster[doc.name];
-    if (!r) return;
-    html += '<tr><td class="doc">' + doc.name + '</td>';
-    for (var d2 = 1; d2 <= DIM; d2++) {
-      var v = String(r[d2 - 1] || '');
-      html += '<td class="s-' + v + '">' + v + '</td>';
+  var h = '<table class="master"' + (forDoc ? ' style="border-collapse:collapse;font-family:標楷體,serif"' : '') + '>';
+  // 表頭
+  h += '<tr>' + td(lbl, 1, '') ;
+  ['星期一', '星期二', '星期三', '星期四', '星期五'].forEach(function (w) { h += td(bd, 4, w); });
+  h += td(bd, 1, '星期六') + td(bd, 1, '星期日') + '</tr>';
+  h += '<tr>' + td(lbl, 1, '');
+  for (var i = 0; i < 5; i++) { ['B', 'C', 'D', 'E'].forEach(function (x) { h += td(bd, 1, x); }); }
+  h += td(bd, 1, '') + td(bd, 1, '') + '</tr>';
+
+  // 週起點：本月1日所在週的週一（可能落在上月）
+  var dow1 = new Date(Y, M - 1, 1).getDay(); // 0=日
+  var start = 1 - ((dow1 + 6) % 7);
+  for (var wk = start; wk <= DIM; wk += 7) {
+    var days = [];
+    for (var k = 0; k < 7; k++) days.push(wk + k); // 一..日
+    // 日期列
+    h += '<tr>' + td(lbl, 1, '');
+    days.forEach(function (d, i) {
+      var cls = (d < 1 ? (forDoc ? bd : ' class="datehead prevday"') : dh);
+      var span = i < 5 ? 4 : 1;
+      h += td(cls, span, (d > DIM ? '' : dispDay(d)));
+    });
+    h += '</tr>';
+    // 胃鏡/白班
+    h += '<tr>' + td(lbl, 1, '胃鏡/白班');
+    days.forEach(function (d, i) {
+      if (i >= 5) { h += td(bd, 1, ''); return; }
+      if (d > DIM || (d < 1 && !Object.keys(DATA.prevRoster).length)) { h += td(bd, 4, ''); return; }
+      var mir = whoOn('鏡檢', d), wt = whoOn('白班', d);
+      if (!mir && !wt && d < 1) { h += td(bd, 4, ''); return; }
+      h += td(bd, 1, mir ? '胃' + mir : '') + td(bd, 1, wt) + td(bd, 1, (mir || wt) ? secondLine(d) : '') + td(bd, 1, '');
+    });
+    h += '</tr>';
+    // 值班(A)
+    h += '<tr>' + td(lbl, 1, '值班(A)');
+    days.forEach(function (d, i) {
+      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOn('值班', d)));
+    });
+    h += '</tr>';
+    // 安康
+    h += '<tr>' + td(lbl, 1, '安康');
+    days.forEach(function (d, i) {
+      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOn('安康', d)));
+    });
+    h += '</tr>';
+    // 羅東聖母
+    h += '<tr>' + td(lbl, 1, '羅東聖母');
+    days.forEach(function (d, i) {
+      if (i >= 2) { h += td(gray, i < 5 ? 4 : 1, ''); return; } // 週三之後灰色
+      if (d > DIM) { h += td(bd, 4, ''); return; }
+      var st = whoOn('聖母', d);
+      // 該週一二皆無聖母 → NIL（僅本月日顯示）
+      if (!st && d >= 1) {
+        var mate = i === 0 ? days[1] : days[0];
+        var mateSt = (mate >= 1 && mate <= DIM) ? whoOn('聖母', mate) : '';
+        st = mateSt ? '' : 'NIL';
+      }
+      h += td(bd, 4, st);
+    });
+    h += '</tr>';
+  }
+  h += '</table>';
+  return h;
+}
+
+function wordBlob(title, bodyHtml, filename) {
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
+    '<head><meta charset="utf-8"><title>' + title + '</title>' +
+    '<style>body{font-family:標楷體,DFKai-SB,serif;font-size:14pt}table{border-collapse:collapse;width:100%}' +
+    'td,th{border:1px solid #000;padding:3px 5px;text-align:center;font-size:11pt}h1{font-size:16pt;text-align:center}h2{font-size:13pt}</style>' +
+    '</head><body>' + bodyHtml + '</body></html>';
+  var blob = new Blob(['﻿' + html], { type: 'application/msword' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+function rocYM() {
+  var p = document.getElementById('monthSel').value.split('/');
+  return { y: p[0], m: p[1] };
+}
+
+// 醫院格式：醫療作業表（人力編制＋值班會診表＋學術活動＋注意事項）
+function dlHospitalDoc() {
+  if (!DATA) return;
+  var ym = rocYM();
+  var docs = DATA.doctors;
+  var h = '<h1>麻醉部' + ym.y + '年' + ym.m + '月份醫師醫療作業表</h1>';
+  h += '<h2>一、人力編制：</h2><table><tr><th>專科</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th></tr>';
+  for (var i = 0; i < docs.length; i += 3) {
+    h += '<tr><td>' + (i === 0 ? '麻醉科' : '') + '</td>';
+    for (var j = 0; j < 3; j++) {
+      var d = docs[i + j];
+      h += d ? '<td>' + d.name + '</td><td>' + d.ext + '<br>手機：' + d.phone + '</td>' : '<td></td><td></td>';
     }
-    html += '</tr>';
-  });
-  document.getElementById('matrix').innerHTML = html;
-
-  // 會診表（兩段）
-  var ch = '';
+    h += '</tr>';
+  }
+  h += '</table><p>備註：</p>';
+  h += '<h2>二、主治醫師值班、會診表：</h2>';
   [[1, 16], [17, DIM]].forEach(function (seg) {
-    ch += '<table style="margin-bottom:8px"><tr><th>日期</th>';
-    for (var d = seg[0]; d <= seg[1]; d++) ch += '<th>' + d + '</th>';
-    ch += '</tr><tr><td class="doc">總院值班</td>';
-    for (var d1 = seg[0]; d1 <= seg[1]; d1++) ch += '<td>' + whoOn('值班', d1) + '</td>';
-    ch += '</tr><tr><td class="doc">安康</td>';
-    for (var d2 = seg[0]; d2 <= seg[1]; d2++) ch += '<td>' + whoOn('安康', d2) + '</td>';
-    ch += '</tr></table>';
+    h += '<table><tr><th>日期</th>';
+    for (var d = seg[0]; d <= seg[1]; d++) h += '<th>' + d + '</th>';
+    h += '</tr><tr><td>總院<br>值班</td>';
+    for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + whoOn('值班', d1) + '</td>';
+    h += '</tr><tr><td>安康</td>';
+    for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + whoOn('安康', d2) + '</td>';
+    h += '</tr></table><br>';
   });
-  document.getElementById('consult').innerHTML = ch;
+  h += '<p>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
+  h += '<h2>四、科內學術活動總表：</h2><table><tr><th>時間</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th></tr>' +
+    '<tr><td>07:30～09:00</td><td>雜誌討論會</td><td></td><td></td><td>臨床討論會</td><td></td><td></td></tr>' +
+    '<tr><td>09:00～12:00</td><td>臨床麻醉教學</td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>12:00～13:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>13:00～14:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>13:00～14:30</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>17:00～18:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>' +
+    '<p>備註：每月第三週週四舉行臨床討論會</p>';
+  h += '<h2>五、注意事項：</h2><p>各醫療科總醫師或書記於每月28日前(若遇週六或假日則提前1-2日)，將該科次月「各科部醫師醫療作業表」電子檔案送交教研部。</p>';
+  wordBlob('醫療作業表', h, ym.y + '-' + ym.m + '醫院格式.doc');
+}
 
-  // 安康月曆
-  var ak = '<tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
-  var firstDow = (dow(1) + 6) % 7;
+// 安康值班表（月曆＋聯絡資訊）
+function dlAnkangDoc() {
+  if (!DATA) return;
+  var ym = rocYM();
+  var h = '<h1>' + ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表</h1>';
+  h += '<table><tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
+  var firstDow = (new Date(Y, M - 1, 1).getDay() + 6) % 7;
   var day = 1;
   while (day <= DIM) {
-    var rowH = '<tr>';
+    var nums = '', names = '';
     for (var col = 0; col < 7; col++) {
-      if ((day === 1 && col < firstDow) || day > DIM) { rowH += '<td></td>'; continue; }
-      rowH += '<td><span class="n">' + day + '</span><span class="who">' + whoOn('安康', day) + '</span></td>';
+      if ((day === 1 && col < firstDow) || day > DIM) { nums += '<td></td>'; names += '<td></td>'; continue; }
+      nums += '<td>' + day + '</td>';
+      names += '<td>' + whoOn('安康', day) + '</td>';
       day++;
     }
-    ak += rowH + '</tr>';
+    h += '<tr>' + nums + '</tr><tr>' + names + '</tr>';
   }
-  document.getElementById('akCal').innerHTML = ak;
+  h += '</table><p style="font-size:11pt">';
+  DATA.doctors.forEach(function (d) {
+    h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
+  });
+  h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';
+  wordBlob('安康值班表', h, ym.y + '年' + ym.m + '月份麻醉科主治醫師值班表-安康.doc');
+}
+
+function dlDoc() {
+  if (!DATA) return;
+  var m = document.getElementById('monthSel').value.split('/');
+  var title = m[0] + '年' + m[1] + '月份麻醉科總班表';
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
+    '<head><meta charset="utf-8"><title>' + title + '</title></head><body>' +
+    '<h2 style="text-align:center;font-family:標楷體,serif">' + title + '</h2>' +
+    buildMaster(true) + '</body></html>';
+  var blob = new Blob(['﻿' + html], { type: 'application/msword' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = title + '.doc';
+  a.click();
 }
 </script>
 </body>
