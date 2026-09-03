@@ -389,19 +389,42 @@ function tryOnce(c) {
   c.meet.forEach(function (d) {
     if (d <= DIM && !g[nameOfAbbr('李')][d - 1]) g[nameOfAbbr('李')][d - 1] = '二線班';
   });
+  // 3.5 李固定週四安康（自 115/09 起慣例；休假或已指定班別的週四除外）
+  var liTh = nameOfAbbr('李');
+  if (g[liTh]) {
+    for (var dTh = 1; dTh <= DIM; dTh++) {
+      if (dow(dTh) === 4 && !g[liTh][dTh - 1]) g[liTh][dTh - 1] = '安康';
+    }
+  }
   // 4. 聖母週（一+二同醫師）
   for (var d = 1; d <= DIM; d++) {
     if (dow(d) !== 1) continue;
     if (c.nost.indexOf(d) >= 0) continue;
     var tue = d + 1;
-    var cands = docs.filter(function (n) {
+    var stWedOff = function (who, tueDay) { // 聖母後隔天週三標 OFF
+      var wed = tueDay + 1;
+      if (who && wed <= DIM && dow(wed) === 3 && !g[who][wed - 1]) g[who][wed - 1] = 'OFF';
+    };
+    var bothC = docs.filter(function (n) {
       return eligible(n, d, '聖母', c) && (tue > DIM || eligible(n, tue, '聖母', c));
     });
-    var pref = (wants['聖母'][d] || []).filter(function (n) { return cands.indexOf(n) >= 0; });
-    var pick = pref.length ? pref[0] : (cands.length ? shuffle(cands)[0] : null);
+    var pref = (wants['聖母'][d] || []).filter(function (n) { return bothC.indexOf(n) >= 0; });
+    var pick = pref.length ? pref[0] : (bothC.length ? shuffle(bothC)[0] : null);
     if (pick) {
       g[pick][d - 1] = '聖母';
-      if (tue <= DIM) g[pick][tue - 1] = '聖母';
+      if (tue <= DIM) { g[pick][tue - 1] = '聖母'; stWedOff(pick, tue); }
+    } else {
+      // 無人能包兩天 → 拆成兩天不同醫師
+      [d, tue].forEach(function (d2) {
+        if (d2 > DIM) return;
+        var c2 = docs.filter(function (n) { return eligible(n, d2, '聖母', c); });
+        var p2 = (wants['聖母'][d2] || []).filter(function (n) { return c2.indexOf(n) >= 0; })[0]
+          || (c2.length ? shuffle(c2)[0] : null);
+        if (p2) {
+          g[p2][d2 - 1] = '聖母';
+          if (d2 === tue) stWedOff(p2, tue);
+        }
+      });
     }
   }
   // 5. 逐日排班
@@ -431,7 +454,15 @@ function tryOnce(c) {
       else if (s === '安康') {
         var liu = nameOfAbbr('劉');
         var liuTotal = g[liu] ? g[liu].filter(function (v) { return v && v !== 'OFF' && v !== '休'; }).length : 99;
-        if (cands.indexOf(liu) >= 0 && liuTotal < 15 && Math.random() < 0.75) pick = liu;
+        // 劉「配速」：安康平均分布整月（目標約14班），不要前半月塞滿
+        if (cands.indexOf(liu) >= 0 && liuTotal < (day / DIM) * 14 && Math.random() < 0.9) pick = liu;
+        if (!pick) {
+          // 安康是 0 點班 → 給點值較高者，把能得點的班（白班/鏡檢）留給低點值醫師（如李）
+          var hi = shuffle(cands.filter(function (n) { return n !== liu; }));
+          if (!hi.length) hi = shuffle(cands);
+          hi.sort(function (a, b) { return pointsOf(b) - pointsOf(a); });
+          pick = hi[0];
+        }
       }
       if (!pick) {
         var sorted = shuffle(cands).sort(function (a, b) { return pointsOf(a) - pointsOf(b); });
