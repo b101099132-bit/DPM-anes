@@ -22,6 +22,7 @@
   .day { border: 1px solid #dde5ee; border-radius: 6px; min-height: 52px; padding: 3px 4px; cursor: pointer; font-size: .8rem; position: relative; background: #fff; user-select: none; }
   .day .n { font-weight: bold; color: #345; }
   .day .tag { display: block; margin-top: 2px; border-radius: 4px; color: #fff; text-align: center; font-size: .72rem; padding: 1px 0; }
+  .day .oth { display: block; font-size: .62rem; color: #96a5b5; line-height: 1.25; margin-top: 1px; }
   .day.we { background: #f7fafd; }
   .day.blank { visibility: hidden; }
   textarea { width: 100%; box-sizing: border-box; border: 1px solid #bcd; border-radius: 6px; padding: 8px; font-size: .95rem; font-family: inherit; }
@@ -72,6 +73,7 @@ var CATS = [
   { key: '羅東聖母', color: '#7f8c8d' }
 ];
 var curCat = 0, dayCat = {}, DIM = 0, CY = 0, CM = 0;
+var DOCS = [], OTHERS = {}; // OTHERS[day] = {off:[簡稱], st:[簡稱]}
 
 init();
 
@@ -88,8 +90,10 @@ function init() {
   var cached = null;
   try { cached = JSON.parse(localStorage.getItem('dpmDocList') || 'null'); } catch (e) {}
   if (cached && cached.length) fillSel(cached);
+  if (cached && cached.length) DOCS = cached;
   jsonp({ action: 'doctorList' }, function (res) {
     if (res && res.ok) {
+      DOCS = res.doctors;
       fillSel(res.doctors);
       try { localStorage.setItem('dpmDocList', JSON.stringify(res.doctors)); } catch (e) {}
     } else if (!cached) {
@@ -141,7 +145,48 @@ function loadMine() {
       document.getElementById('note').value = res.row[res.headers.indexOf('備註')] || '';
     }
     buildCal();
+    loadOthers(name, pin);
   });
+}
+
+function abbrOf(name) {
+  var d = DOCS.filter(function (x) { return x.name === name; })[0];
+  return d ? d.abbr : name.slice(-1);
+}
+
+// 同月其他醫師的已要休/聖母（灰色小字）
+function loadOthers(name, pin) {
+  OTHERS = {};
+  jsonp({ action: 'requestAll', name: name, pin: pin, month: rocM() }, function (res) {
+    if (!res || !res.ok) return;
+    res.rows.forEach(function (r) {
+      if (r.name === name) return; // 排除自己
+      var ab = abbrOf(r.name);
+      String(r.off).split(/[,，]/).forEach(function (s) {
+        var n = parseInt(s, 10);
+        if (n >= 1 && n <= 31) { (OTHERS[n] = OTHERS[n] || { off: [], st: [] }).off.push(ab); }
+      });
+      String(r.st).split(/[,，]/).forEach(function (s) {
+        var n = parseInt(s, 10);
+        if (n >= 1 && n <= 31) { (OTHERS[n] = OTHERS[n] || { off: [], st: [] }).st.push(ab); }
+      });
+    });
+    paintOthers();
+  });
+}
+
+function paintOthers() {
+  for (var d = 1; d <= DIM; d++) {
+    var el = document.getElementById('oth' + d);
+    if (!el) continue;
+    var o = OTHERS[d];
+    var txt = '';
+    if (o) {
+      if (o.off.length) txt += '休:' + o.off.join('');
+      if (o.st.length) txt += (txt ? ' ' : '') + '聖:' + o.st.join('');
+    }
+    el.textContent = txt;
+  }
 }
 
 function buildCal() {
@@ -154,7 +199,7 @@ function buildCal() {
   for (var b = 0; b < first; b++) html += '<div class="day blank"></div>';
   for (var d = 1; d <= DIM; d++) {
     var dow = new Date(y, m - 1, d).getDay();
-    html += '<div class="day' + (dow === 0 || dow === 6 ? ' we' : '') + '" id="day' + d + '" onclick="tapDay(' + d + ')"><span class="n">' + d + '</span><span class="tag" id="tag' + d + '"></span></div>';
+    html += '<div class="day' + (dow === 0 || dow === 6 ? ' we' : '') + '" id="day' + d + '" onclick="tapDay(' + d + ')"><span class="n">' + d + '</span><span class="tag" id="tag' + d + '"></span><span class="oth" id="oth' + d + '"></span></div>';
   }
   document.getElementById('cal').innerHTML = html;
   for (var i = 1; i <= DIM; i++) paintDay(i);

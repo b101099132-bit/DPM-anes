@@ -118,6 +118,26 @@ function cfgList(h) {
     .map(function (s) { return parseInt(s, 10); }).filter(function (n) { return n >= 1; });
 }
 
+// Word 用醫師順序：鄒部長排第一，其餘照主檔排序
+function docsForWord() {
+  var z = DATA.doctors.filter(function (d) { return d.name === '鄒美勇'; });
+  return z.concat(DATA.doctors.filter(function (d) { return d.name !== '鄒美勇'; }));
+}
+// NIL 標記（月設定：20=聖母,5=值班）
+function isNil(d, s) {
+  if (d < 1 || !DATA.cfg) return false;
+  var raw = String(DATA.cfg[DATA.cfgHeaders.indexOf('NIL標記')] || '');
+  if (!raw) return false;
+  return raw.split(/[,，]/).some(function (x) {
+    var m = x.trim().split('=');
+    return parseInt(m[0], 10) === d && m[1] === s;
+  });
+}
+function whoOrNil(shift, d) {
+  var w = whoOn(shift, d);
+  return w || (isNil(d, shift) ? 'NIL' : '');
+}
+
 // D 欄（二線）：本月格子有二線班者優先，否則預設鄒；二線不排日留空；上月日一律只看格子，否則鄒
 function secondLine(day) {
   var g = whoOn('二線班', day);
@@ -162,21 +182,21 @@ function buildMaster(forDoc) {
     days.forEach(function (d, i) {
       if (i >= 5) { h += td(bd, 1, ''); return; }
       if (d > DIM || (d < 1 && !Object.keys(DATA.prevRoster).length)) { h += td(bd, 4, ''); return; }
-      var mir = whoOn('鏡檢', d), wt = whoOn('白班', d);
+      var mir = whoOrNil('鏡檢', d), wt = whoOrNil('白班', d);
       if (!mir && !wt && d < 1) { h += td(bd, 4, ''); return; }
-      h += td(bd, 1, mir ? '胃' + mir : '') + td(bd, 1, wt) + td(bd, 1, (mir || wt) ? secondLine(d) : '') + td(bd, 1, '');
+      h += td(bd, 1, (mir && mir !== 'NIL') ? '胃' + mir : mir) + td(bd, 1, wt) + td(bd, 1, (mir || wt) ? secondLine(d) : '') + td(bd, 1, '');
     });
     h += '</tr>';
     // 值班(A)
     h += '<tr>' + td(lbl, 1, '值班(A)');
     days.forEach(function (d, i) {
-      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOn('值班', d)));
+      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOrNil('值班', d)));
     });
     h += '</tr>';
     // 安康
     h += '<tr>' + td(lbl, 1, '安康');
     days.forEach(function (d, i) {
-      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOn('安康', d)));
+      h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOrNil('安康', d)));
     });
     h += '</tr>';
     // 羅東聖母
@@ -184,7 +204,7 @@ function buildMaster(forDoc) {
     days.forEach(function (d, i) {
       if (i >= 2) { h += td(gray, i < 5 ? 4 : 1, ''); return; } // 週三之後灰色
       if (d > DIM) { h += td(bd, 4, ''); return; }
-      var st = whoOn('聖母', d);
+      var st = whoOrNil('聖母', d);
       // 該週一二皆無聖母 → NIL（僅本月日顯示）
       if (!st && d >= 1) {
         var mate = i === 0 ? days[1] : days[0];
@@ -229,7 +249,7 @@ function rocYM() {
 function dlHospitalDoc() {
   if (!DATA) return;
   var ym = rocYM();
-  var docs = DATA.doctors;
+  var docs = docsForWord();
   var SEC = 'style="font-size:12pt;margin:6pt 0 2pt;text-align:justify"';
   var NOTE = 'style="font-size:12pt;font-weight:bold;margin:2pt 0"';
   var h = '<p style="font-size:16pt;font-weight:bold;text-align:center;margin:0 0 6pt">麻醉部' + ym.y + '年' + ym.m + '月份醫師醫療作業表</p>';
@@ -253,9 +273,9 @@ function dlHospitalDoc() {
     h += '<table style="font-size:10pt"><tr><td style="width:13mm">日期</td>';
     for (var d = seg[0]; d <= seg[1]; d++) h += '<td style="width:9.2mm">' + d + '</td>';
     h += '</tr><tr><td>總院<br>值班</td>';
-    for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + whoOn('值班', d1) + '</td>';
+    for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + whoOrNil('值班', d1) + '</td>';
     h += '</tr><tr><td>安康</td>';
-    for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + whoOn('安康', d2) + '</td>';
+    for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + whoOrNil('安康', d2) + '</td>';
     h += '</tr></table><br>';
   });
   h += '<p ' + NOTE + '>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
@@ -302,7 +322,7 @@ function dlAnkangDoc() {
     h += nums + '</tr>' + names + '</tr>';
   }
   h += '</table><p style="font-size:12pt;margin-top:6pt">';
-  DATA.doctors.forEach(function (d) {
+  docsForWord().forEach(function (d) {
     h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
   });
   h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';

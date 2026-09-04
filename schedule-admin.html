@@ -39,8 +39,17 @@
   .ok { color: #0a7a2f; font-weight: bold; } .err { color: #c0392b; font-weight: bold; }
   .hint { color: #789; font-size: .8rem; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: .8rem; color: #fff; }
-  .b-pub { background: #0a7a2f; } .b-draft { background: #7a8a99; }
-  #reqTable td { text-align: left; }
+  .b-pub { background: #0a7a2f; } .b-draft { background: #7a8a99; } .b-pending { background: #e67e22; }
+  #reqTable td, #logTable td { text-align: left; }
+  td.nil { background: #a6a6a6; color: #fff; font-weight: bold; }
+  #picker { position: absolute; background: #fff; border: 1px solid #789; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.2); padding: 6px; z-index: 99; display: none; }
+  #picker span { display: inline-block; padding: 5px 10px; margin: 2px; border-radius: 6px;
+    background: #eef4fa; cursor: pointer; font-size: .85rem; }
+  #picker span:hover { background: #d6e6f7; }
+  #picker span.bad { color: #bbb; text-decoration: line-through; }
+  #picker span.nilopt { background: #a6a6a6; color: #fff; }
+  #picker span.clropt { background: #f5c6c2; }
 </style>
 </head>
 <body>
@@ -76,6 +85,8 @@
     <div class="card">
       <h2>要班需求彙總</h2>
       <div class="grid-scroll"><table class="mini" id="reqTable"></table></div>
+      <h2 style="margin-top:12px">需求填報紀錄（每次送出留存，可比對先後）</h2>
+      <div class="grid-scroll" style="max-height:180px;overflow-y:auto"><table class="mini" id="logTable"></table></div>
     </div>
 
     <div class="card">
@@ -85,14 +96,19 @@
         <button onclick="genDraft()">自動產生草稿</button>
         <button class="gray" onclick="runValidate()">檢核違規</button>
         <button class="gray" onclick="clearGrid()">清空班表</button>
-        <button onclick="saveDraft(false)">儲存草稿</button>
-        <button class="warn" onclick="saveDraft(true)">儲存並發布</button>
-        <button class="gray" onclick="unpublish()">取消發布</button>
+        <button onclick="saveDraft(null)">儲存草稿</button>
+        <button class="warn" id="btnSubmit" onclick="saveDraft('submit')">儲存並送審</button>
+        <button class="warn" id="btnPublish" onclick="saveDraft('publish')" style="display:none">儲存並發布</button>
+        <button class="gray" id="btnUnpub" onclick="unpublish()">退回草稿</button>
       </div>
       <div class="grid-scroll"><table class="sched" id="grid"></table></div>
       <div class="hint">灰色前兩欄為上月末班別（自動帶入，供銜接檢核）。二線班預設為鄒部長，僅部長開會日需在表中排李主任二線班。</div>
+      <h2 style="margin-top:14px">班別視角編輯（點格子選醫師／NIL／清除，與上表即時連動）</h2>
+      <div class="grid-scroll"><table class="sched" id="sgrid"></table></div>
+      <div class="hint">NIL＝確認排不出人（灰底），與空白（還沒排）區隔；檢核不會把 NIL 當缺班。</div>
       <div id="saveMsg" style="margin-top:6px"></div>
     </div>
+    <div id="picker"></div>
 
     <div class="card">
       <h2>檢核結果</h2>
@@ -120,6 +136,7 @@ var SHIFTS = ['白班', '值班', '鏡檢', '安康', '聖母', '二線班', 'OF
 var POINTS = { '值班': 3, '白班': 1, '鏡檢': 1, '二線班': 1, '聖母': 0, '安康': 0 };
 var EXCLUDE_GRID = ['鄒美勇']; // 部長固定二線，不入班表格
 var WB = null, GRID = {}, DIM = 0, Y = 0, M = 0, curShift = 0, VIOL = {};
+var NILS = {}; // {'20_聖母': true} 確認排不出人的班別
 
 init();
 
@@ -170,8 +187,11 @@ function login() {
     document.getElementById('loginMsg').textContent = '';
     document.getElementById('work').style.display = 'block';
     document.getElementById('whoBadge').textContent = '｜' + res.who + '｜' + rocM();
+    document.getElementById('btnPublish').style.display = res.isAdmin ? '' : 'none';
+    document.getElementById('btnSubmit').style.display = res.isAdmin ? 'none' : '';
     loadCfgToForm();
     renderRequests();
+    renderLogs();
     GRID = {};
     gridDoctors().forEach(function (d) {
       GRID[d.name] = (res.roster[d.name] || Array.from({ length: 31 }, function () { return ''; })).slice(0, 31);
@@ -206,9 +226,24 @@ function loadCfgToForm() {
   document.getElementById('cfg_no2').value = cfgVal('二線不排日');
   document.getElementById('cfg_exAk').value = cfgVal('值後可安康日');
   document.getElementById('cfg_exWh').value = cfgVal('值後可白鏡日');
-  var pub = cfgVal('狀態') === '發布';
-  document.getElementById('pubBadge').innerHTML = '<span class="badge ' + (pub ? 'b-pub">已發布' : 'b-draft">草稿') + '</span>';
+  var st = cfgVal('狀態') || '草稿';
+  var cls = st === '發布' ? 'b-pub' : (st === '待確認' ? 'b-pending' : 'b-draft');
+  document.getElementById('pubBadge').innerHTML = '<span class="badge ' + cls + '">' +
+    (st === '發布' ? '已發布' : st === '待確認' ? '待管理員確認' : '草稿') + '</span>';
+  // NIL 標記解析（格式：20=聖母,5=值班）
+  NILS = {};
+  String(cfgVal('NIL標記') || '').split(/[,，]/).forEach(function (s) {
+    var m = s.trim().split('=');
+    if (m.length === 2 && parseInt(m[0], 10) >= 1) NILS[parseInt(m[0], 10) + '_' + m[1].trim()] = true;
+  });
 }
+function serializeNils() {
+  return Object.keys(NILS).map(function (k) {
+    var p = k.split('_');
+    return p[0] + '=' + p[1];
+  }).join(',');
+}
+function isNil(d, s) { return !!NILS[d + '_' + s]; }
 function cfgSets() {
   return {
     holiday: parseDays(document.getElementById('cfg_holiday').value),
@@ -220,16 +255,35 @@ function cfgSets() {
   };
 }
 
+function fmtTime(v) {
+  if (!v) return '';
+  var d = new Date(v);
+  if (isNaN(d)) return String(v);
+  return ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2) + ' ' +
+    ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
 function renderRequests() {
-  var html = '<tr><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th></tr>';
+  var html = '<tr><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th><th>最後填報時間</th></tr>';
   WB.doctors.forEach(function (d) {
     var r = reqOf(d.name);
     html += '<tr><td>' + d.name + '</td>' +
       ['休假', '羅東聖母', '備註'].map(function (h) {
         return '<td>' + (r ? String(r[h] || '') : '') + '</td>';
-      }).join('') + '</tr>';
+      }).join('') + '<td>' + (r ? fmtTime(r['填報時間']) : '') + '</td></tr>';
   });
   document.getElementById('reqTable').innerHTML = html;
+}
+
+function renderLogs() {
+  var logs = (WB.reqLogs || []).slice().sort(function (a, b) {
+    return String(a[0]) < String(b[0]) ? 1 : -1; // 新→舊
+  });
+  var html = '<tr><th>送出時間</th><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th></tr>';
+  logs.forEach(function (r) {
+    html += '<tr><td>' + fmtTime(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td><td>' + (r[4] || '') + '</td><td>' + (r[5] || '') + '</td></tr>';
+  });
+  document.getElementById('logTable').innerHTML = html + (logs.length ? '' : '<tr><td colspan="5">本月尚無填報紀錄</td></tr>');
 }
 
 function dow(d) { return new Date(Y, M - 1, d).getDay(); } // 0=日
@@ -280,11 +334,76 @@ function renderGrid() {
   for (var d2 = 1; d2 <= DIM; d2++) {
     var got = 0;
     docs.forEach(function (doc) { var v = GRID[doc.name][d2 - 1]; if (v && v !== 'OFF' && v !== '休') got++; });
-    var need = requiredShifts(d2, c).length;
+    var need = requiredShifts(d2, c).filter(function (s) { return !isNil(d2, s); }).length;
     html += '<td style="' + (got !== need ? 'color:#c0392b;font-weight:bold' : 'color:#0a7a2f') + '">' + got + '/' + need + '</td>';
   }
   html += '</tr>';
   document.getElementById('grid').innerHTML = html;
+  renderShiftGrid();
+}
+
+// ===== 班別視角矩陣（與 GRID 同資料連動）=====
+var SGRID_SHIFTS = ['值班', '白班', '鏡檢', '安康', '聖母', '二線班'];
+function renderShiftGrid() {
+  var docs = gridDoctors();
+  var html = '<tr><th>班別</th>';
+  for (var d = 1; d <= DIM; d++) {
+    var w = dow(d);
+    html += '<th' + (w === 0 || w === 6 ? ' class="we"' : '') + '>' + d + '<br>' + DOWTXT[w] + '</th>';
+  }
+  html += '</tr>';
+  SGRID_SHIFTS.forEach(function (s) {
+    html += '<tr><td class="doc">' + s + '</td>';
+    for (var d = 1; d <= DIM; d++) {
+      var whos = docs.filter(function (doc) { return GRID[doc.name][d - 1] === s; })
+        .map(function (doc) { return abbrOf(doc.name); });
+      var nil = isNil(d, s);
+      var content = nil ? 'NIL' : whos.join('/');
+      var cls = 'cell' + (nil ? ' nil' : (whos.length ? ' s-' + s : ''));
+      html += '<td class="' + cls + '" onclick="openPicker(event,\'' + s + '\',' + d + ')">' + content + '</td>';
+    }
+    html += '</tr>';
+  });
+  document.getElementById('sgrid').innerHTML = html;
+}
+
+function openPicker(ev, shift, d) {
+  var c = cfgSets();
+  var pk = document.getElementById('picker');
+  var docs = gridDoctors();
+  var html = '<div style="font-size:.8rem;color:#345;margin:2px 4px"><b>' + d + '日 ' + DOWTXT[dow(d)] + '｜' + shift + '</b></div>';
+  docs.forEach(function (doc) {
+    var cur = GRID[doc.name][d - 1];
+    var ok = eligible(doc.name, d, shift, c) || cur === shift;
+    html += '<span class="' + (ok ? '' : 'bad') + '" onclick="pickAssign(\'' + shift + '\',' + d + ',\'' + doc.name + '\')">' +
+      abbrOf(doc.name) + (cur && cur !== shift ? '(' + cur + ')' : '') + '</span>';
+  });
+  html += '<br><span class="nilopt" onclick="pickAssign(\'' + shift + '\',' + d + ',\'__NIL__\')">NIL 排不出人</span>';
+  html += '<span class="clropt" onclick="pickAssign(\'' + shift + '\',' + d + ',\'__CLR__\')">清除</span>';
+  pk.innerHTML = html;
+  pk.style.display = 'block';
+  pk.style.left = Math.min(ev.pageX, window.innerWidth - 260) + 'px';
+  pk.style.top = (ev.pageY + 8) + 'px';
+  ev.stopPropagation();
+}
+document.addEventListener('click', function () {
+  var pk = document.getElementById('picker');
+  if (pk) pk.style.display = 'none';
+});
+
+function pickAssign(shift, d, who) {
+  // 先清掉該班別當天原本的人
+  gridDoctors().forEach(function (doc) {
+    if (GRID[doc.name][d - 1] === shift) GRID[doc.name][d - 1] = '';
+  });
+  delete NILS[d + '_' + shift];
+  if (who === '__NIL__') {
+    NILS[d + '_' + shift] = true;
+  } else if (who !== '__CLR__') {
+    GRID[who][d - 1] = shift; // 覆蓋該醫師當天原值
+  }
+  document.getElementById('picker').style.display = 'none';
+  runValidate();
 }
 
 function tapCell(name, d) {
@@ -400,6 +519,7 @@ function tryOnce(c) {
   for (var d = 1; d <= DIM; d++) {
     if (dow(d) !== 1) continue;
     if (c.nost.indexOf(d) >= 0) continue;
+    if (isNil(d, '聖母') && isNil(d + 1, '聖母')) continue; // 兩天都標 NIL
     var tue = d + 1;
     var stWedOff = function (who, tueDay) { // 聖母後隔天週三標 OFF
       var wed = tueDay + 1;
@@ -437,7 +557,8 @@ function tryOnce(c) {
       }
     });
     var todo = requiredShifts(day, c).filter(function (s) {
-      return s !== '聖母' && s !== '二線班' && !docs.some(function (n) { return g[n][day - 1] === s; });
+      return s !== '聖母' && s !== '二線班' && !isNil(day, s) &&
+        !docs.some(function (n) { return g[n][day - 1] === s; });
     });
     while (todo.length) {
       // 候選人最少的班別優先排（避免稀缺人力被其他班先佔走）
@@ -526,6 +647,7 @@ function collectViolations(c) {
     });
     req.forEach(function (s) {
       if (s === '二線班') return;
+      if (isNil(d, s)) return; // 已標 NIL＝確認排不出，不算缺班
       if (!docs.some(function (n) { return GRID[n][d - 1] === s; })) out.push({ n: '', d: d, msg: d + '日缺「' + s + '」' });
     });
   }
@@ -575,7 +697,8 @@ function saveSettings(cbAfter) {
     '聖母不排週': document.getElementById('cfg_nost').value.trim(),
     '二線不排日': document.getElementById('cfg_no2').value.trim(),
     '值後可安康日': document.getElementById('cfg_exAk').value.trim(),
-    '值後可白鏡日': document.getElementById('cfg_exWh').value.trim()
+    '值後可白鏡日': document.getElementById('cfg_exWh').value.trim(),
+    'NIL標記': serializeNils()
   };
   fetch(API_URL, { method: 'POST', mode: 'no-cors',
     body: new URLSearchParams(Object.assign({ action: 'saveSettings', month: rocM(), data: JSON.stringify(data) }, p)) });
@@ -583,15 +706,15 @@ function saveSettings(cbAfter) {
   if (typeof cbAfter === 'function') setTimeout(cbAfter, 1200);
 }
 
-function saveDraft(alsoPublish) {
+function saveDraft(op) { // op: null=僅存草稿, 'submit'=送審, 'publish'=發布(限管理員)
   var p = authParams();
   saveSettings(function () {
     fetch(API_URL, { method: 'POST', mode: 'no-cors',
       body: new URLSearchParams(Object.assign({ action: 'saveDraft', month: rocM(), data: JSON.stringify(GRID) }, p)) });
     var after = function () {
-      if (alsoPublish) {
+      if (op) {
         fetch(API_URL, { method: 'POST', mode: 'no-cors',
-          body: new URLSearchParams(Object.assign({ action: 'publish', month: rocM(), op: 'publish' }, p)) });
+          body: new URLSearchParams(Object.assign({ action: 'publish', month: rocM(), op: op }, p)) });
       }
       setTimeout(verifySave, 2500);
     };
@@ -611,8 +734,9 @@ function verifySave() {
         var saved = res.roster[n] || [];
         return GRID[n].every(function (v, i) { return String(v || '') === String(saved[i] || ''); });
       });
+      var st = cfgValLive(res);
       document.getElementById('saveMsg').innerHTML = okRows
-        ? '<span class="ok">✓ 已儲存' + (cfgValLive(res) === '發布' ? '並發布' : '') + '</span>'
+        ? '<span class="ok">✓ 已儲存（狀態：' + (st || '草稿') + '）</span>'
         : '<span class="err">回讀驗證未通過，請再按一次儲存</span>';
     } else {
       document.getElementById('saveMsg').innerHTML = '<span class="err">回讀失敗</span>';
@@ -650,9 +774,13 @@ function docBlob(title, bodyHtml, filename) {
   a.click();
 }
 
+function docsForWord() {
+  var z = WB.doctors.filter(function (d) { return d.name === '鄒美勇'; });
+  return z.concat(WB.doctors.filter(function (d) { return d.name !== '鄒美勇'; }));
+}
 function dlHospitalDoc() {
   var ym = rocYM();
-  var docs = WB.doctors;
+  var docs = docsForWord();
   var h = '<h1>麻醉部' + ym.y + '年' + ('0' + ym.m).slice(-2) + '月份醫師醫療作業表</h1>';
   h += '<h2>一、人力編制：</h2><table><tr><th>專科</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th></tr>';
   for (var i = 0; i < docs.length; i += 3) {
@@ -708,7 +836,7 @@ function dlAnkangDoc() {
     h += '<tr>' + nums + '</tr><tr>' + names + '</tr>';
   }
   h += '</table><p style="font-size:11pt">';
-  WB.doctors.forEach(function (d) {
+  docsForWord().forEach(function (d) {
     h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
   });
   h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';
