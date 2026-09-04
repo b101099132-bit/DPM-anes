@@ -96,10 +96,9 @@
         <button onclick="genDraft()">自動產生草稿</button>
         <button class="gray" onclick="runValidate()">檢核違規</button>
         <button class="gray" onclick="clearGrid()">清空班表</button>
-        <button onclick="saveDraft(null)">儲存草稿</button>
-        <button class="warn" id="btnSubmit" onclick="saveDraft('submit')">儲存並送審</button>
+        <button id="btnSave" onclick="saveDraft(null)">儲存</button>
         <button class="warn" id="btnPublish" onclick="saveDraft('publish')" style="display:none">儲存並發布</button>
-        <button class="gray" id="btnUnpub" onclick="unpublish()">退回草稿</button>
+        <button class="gray" id="btnUnpub" onclick="unpublish()" style="display:none">退回草稿</button>
       </div>
       <div class="grid-scroll"><table class="sched" id="grid"></table></div>
       <div class="hint">灰色前兩欄為上月末班別（自動帶入，供銜接檢核）。二線班預設為鄒部長，僅部長開會日需在表中排李主任二線班。</div>
@@ -120,12 +119,6 @@
       <div class="grid-scroll"><table class="mini" id="statTable"></table></div>
     </div>
 
-    <div class="card">
-      <h2>Word 下載（給秘書上傳院內網）</h2>
-      <button onclick="dlHospitalDoc()">醫院格式（醫療作業表）</button>
-      <button onclick="dlAnkangDoc()">安康值班表</button>
-      <div class="hint">下載為 .doc（Word 可直接開啟編輯／另存 .docx）。</div>
-    </div>
   </div>
 </div>
 
@@ -187,8 +180,10 @@ function login() {
     document.getElementById('loginMsg').textContent = '';
     document.getElementById('work').style.display = 'block';
     document.getElementById('whoBadge').textContent = '｜' + res.who + '｜' + rocM();
+    // 流程：排班者只有「儲存」（未發布=存草稿待管理員發布；已發布=直接生效）；發布/退回限管理員
     document.getElementById('btnPublish').style.display = res.isAdmin ? '' : 'none';
-    document.getElementById('btnSubmit').style.display = res.isAdmin ? 'none' : '';
+    document.getElementById('btnUnpub').style.display = res.isAdmin ? '' : 'none';
+    document.getElementById('btnSave').textContent = res.isAdmin ? '儲存草稿' : '儲存';
     loadCfgToForm();
     renderRequests();
     renderLogs();
@@ -734,10 +729,15 @@ function verifySave() {
         var saved = res.roster[n] || [];
         return GRID[n].every(function (v, i) { return String(v || '') === String(saved[i] || ''); });
       });
-      var st = cfgValLive(res);
+      var st = cfgValLive(res) || '草稿';
       document.getElementById('saveMsg').innerHTML = okRows
-        ? '<span class="ok">✓ 已儲存（狀態：' + (st || '草稿') + '）</span>'
+        ? '<span class="ok">✓ 已儲存（狀態：' + st + '）</span>'
         : '<span class="err">回讀驗證未通過，請再按一次儲存</span>';
+      if (okRows) {
+        alert(st === '發布'
+          ? '儲存成功！班表已是公布狀態，修改即刻生效。'
+          : '儲存成功！目前為草稿，待管理員確認發布後公開。');
+      }
     } else {
       document.getElementById('saveMsg').innerHTML = '<span class="err">回讀失敗</span>';
     }
@@ -755,93 +755,7 @@ function unpublish() {
   setTimeout(verifySave, 2500);
 }
 
-// ===== Word 下載（Word 相容 HTML → .doc）=====
-function rocYM() { var p = rocM().split('/'); return { y: p[0], m: String(parseInt(p[1], 10)) }; }
-function shiftAbbr(s, d) {
-  var n = gridDoctors().map(function (x) { return x.name; }).filter(function (n2) { return GRID[n2][d - 1] === s; })[0];
-  return n ? abbrOf(n) : '';
-}
-function docBlob(title, bodyHtml, filename) {
-  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
-    '<head><meta charset="utf-8"><title>' + title + '</title>' +
-    '<style>body{font-family:標楷體,DFKai-SB,serif;font-size:14pt}table{border-collapse:collapse;width:100%}' +
-    'td,th{border:1px solid #000;padding:3px 5px;text-align:center;font-size:11pt}h1{font-size:16pt;text-align:center}h2{font-size:13pt}</style>' +
-    '</head><body>' + bodyHtml + '</body></html>';
-  var blob = new Blob(['﻿' + html], { type: 'application/msword' });
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-
-function docsForWord() {
-  var z = WB.doctors.filter(function (d) { return d.name === '鄒美勇'; });
-  return z.concat(WB.doctors.filter(function (d) { return d.name !== '鄒美勇'; }));
-}
-function dlHospitalDoc() {
-  var ym = rocYM();
-  var docs = docsForWord();
-  var h = '<h1>麻醉部' + ym.y + '年' + ('0' + ym.m).slice(-2) + '月份醫師醫療作業表</h1>';
-  h += '<h2>一、人力編制：</h2><table><tr><th>專科</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th><th>姓名</th><th>聯絡方式</th></tr>';
-  for (var i = 0; i < docs.length; i += 3) {
-    h += '<tr><td>' + (i === 0 ? '麻醉科' : '') + '</td>';
-    for (var j = 0; j < 3; j++) {
-      var d = docs[i + j];
-      h += d ? '<td>' + d.name + '</td><td>' + d.ext + '<br>手機：' + d.phone + '</td>' : '<td></td><td></td>';
-    }
-    h += '</tr>';
-  }
-  h += '</table><p>備註：</p>';
-  h += '<h2>二、主治醫師值班、會診表：</h2>';
-  [[1, 16], [17, DIM]].forEach(function (seg) {
-    h += '<table><tr><th>日期</th>';
-    for (var d = seg[0]; d <= seg[1]; d++) h += '<th>' + d + '</th>';
-    h += '</tr><tr><td>總院<br>值班</td>';
-    for (var d1 = seg[0]; d1 <= seg[1]; d1++) h += '<td>' + shiftAbbr('值班', d1) + '</td>';
-    h += '</tr><tr><td>安康</td>';
-    for (var d2 = seg[0]; d2 <= seg[1]; d2++) h += '<td>' + shiftAbbr('安康', d2) + '</td>';
-    h += '</tr></table><br>';
-  });
-  h += '<p>備註：1.二線為昨值醫師<br>　　　2.值班醫師找不到,333,綠色狀況找二線(為昨值班)醫師,三線為明日值班醫師</p>';
-  h += '<h2>四、科內學術活動總表：</h2><table><tr><th>時間</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th></tr>' +
-    '<tr><td>07:30～09:00</td><td>雜誌討論會</td><td></td><td></td><td>臨床討論會</td><td></td><td></td></tr>' +
-    '<tr><td>09:00～12:00</td><td>臨床麻醉教學</td><td></td><td></td><td></td><td></td><td></td></tr>' +
-    '<tr><td>12:00～13:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
-    '<tr><td>13:00～14:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
-    '<tr><td>13:00～14:30</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
-    '<tr><td>17:00～18:00</td><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>' +
-    '<p>備註：每月第三週週四舉行臨床討論會</p>';
-  h += '<h2>五、注意事項：</h2><p>各醫療科總醫師或書記於每月28日前(若遇週六或假日則提前1-2日)，將該科次月「各科部醫師醫療作業表」電子檔案送交教研部。</p>';
-  docBlob('醫療作業表', h, ym.y + '-' + ('0' + ym.m).slice(-2) + '醫院格式.doc');
-}
-
-function dlAnkangDoc() {
-  var ym = rocYM();
-  var h = '<h1>' + ym.y + '年' + ('0' + ym.m).slice(-2) + '月份麻醉科主治醫師值班表</h1>';
-  h += '<table><tr>' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<th>' + w + '</th>'; }).join('') + '</tr>';
-  var firstDow = (dow(1) + 6) % 7; // 0=一
-  var day = 1;
-  while (day <= DIM) {
-    var nums = '', names = '';
-    for (var col = 0; col < 7; col++) {
-      var show = (day === 1 && col < firstDow) || day > DIM ? '' : day;
-      if (show !== '') {
-        nums += '<td>' + show + '</td>';
-        names += '<td>' + shiftAbbr('安康', day) + '</td>';
-        day++;
-      } else {
-        nums += '<td></td>'; names += '<td></td>';
-      }
-    }
-    h += '<tr>' + nums + '</tr><tr>' + names + '</tr>';
-  }
-  h += '</table><p style="font-size:11pt">';
-  docsForWord().forEach(function (d) {
-    h += '*' + d.name + (d.name === '鄒美勇' ? '部長' : '醫師') + ':公務機:82' + d.ext + ' ' + d.phone + '<br>';
-  });
-  h += '*麻醉醫師上班<br>(平日一至五):08:00至17:00值班至24:00<br>(週六): 8AM-16:00值班至24:00<br>(週日):值班 8AM-16:00<br>例假日值班: 8AM-24:00</p>';
-  docBlob('安康值班表', h, ym.y + '年' + ('0' + ym.m).slice(-2) + '月份麻醉科主治醫師值班表-安康.doc');
-}
+// Word 下載已移至班表查詢頁（schedule.html），秘書由該頁自行下載
 </script>
 </body>
 </html>
