@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>麻醉統計月報填報 | DPM-anes</title>
 <style>
@@ -120,10 +121,13 @@ function buildForm() {
     });
     html += '</div>';
   }
-  if (ROLE === 'admin' && ADMIN_FIELDS.length) {
+  // 防呆：common.js 若被瀏覽器快取成舊版（無 ADMIN_FIELDS），改用本地預設值
+  var adminFields = (typeof ADMIN_FIELDS !== 'undefined' && ADMIN_FIELDS.length)
+    ? ADMIN_FIELDS : ['一日值班費'];
+  if (ROLE === 'admin') {
     html += '<div class="card" style="border:1px solid #e6c980;background:#fffdf7">' +
             '<h2 style="border-left-color:#b8860b;color:#8a6d1a">管理員專用欄位</h2>';
-    ADMIN_FIELDS.forEach(function (k) {
+    adminFields.forEach(function (k) {
       html += '<div class="row"><label>' + k + '</label>' +
               '<input type="number" min="0" step="1" data-key="' + k + '"></div>';
     });
