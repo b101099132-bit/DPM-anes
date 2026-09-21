@@ -60,8 +60,8 @@
   </div>
 </div>
 
-<script src="config.js?v=6"></script>
-<script src="common.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="common.js?v=7"></script>
 <script>
 var SITE = null, UI = null, ROLE = null, CACHE = null; // CACHE: {headers, rows}
 
@@ -119,6 +119,15 @@ function buildForm() {
               '<input type="number" min="0" step="1" data-key="' + k + '"></div>';
     });
     html += '</div>';
+  }
+  if (ROLE === 'admin' && ADMIN_FIELDS.length) {
+    html += '<div class="card" style="border:1px solid #e6c980;background:#fffdf7">' +
+            '<h2 style="border-left-color:#b8860b;color:#8a6d1a">管理員專用欄位</h2>';
+    ADMIN_FIELDS.forEach(function (k) {
+      html += '<div class="row"><label>' + k + '</label>' +
+              '<input type="number" min="0" step="1" data-key="' + k + '"></div>';
+    });
+    html += '<div class="hint">僅管理員可見並填寫，不計入麻醉總數；填入後報表頁自動產生趨勢圖。</div></div>';
   }
   box.innerHTML = html;
 }

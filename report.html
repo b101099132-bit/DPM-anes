@@ -84,11 +84,19 @@
     <div class="chartbox"><canvas id="c5"></canvas></div>
     <div class="hint">各月插管全麻／未插管全麻／IVG 佔三者合計之百分比。</div>
   </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>六、一日值班費</h2>
+      <button class="dlbtn" onclick="dlChart('c6','一日值班費')">下載 PNG</button></div>
+    <div class="chartbox"><canvas id="c6"></canvas></div>
+    <div class="tablebox" id="t6"></div>
+    <div class="hint">由管理員於月報填報頁登錄；未登錄的月份不顯示。</div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="config.js?v=6"></script>
-<script src="common.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="common.js?v=7"></script>
 <script>
 var DATA = {};          // {hq:{H,rows}, ak:{H,rows}}
 var SERIES = {};        // {hq:[...], ak:[...], all:[...]}
@@ -155,7 +163,7 @@ function buildSeries(D, isAk) {
     }
     return { month: String(r[0]), total: v('麻醉總數'), gi: gi, intub: intub,
       nonintub: v('未插管全身麻醉(96017)'), ivg: v('IVG(96004)'),
-      days: v('腸胃鏡工作天數') };
+      days: v('腸胃鏡工作天數'), fee: v('一日值班費') };
   });
 }
 
@@ -282,6 +290,44 @@ function render() {
     data: { labels: sRows.map(function (s) { return s.month; }), datasets: pctDatasets_(sRows, '', ['#4472c4', '#c0504d', '#9bbb59'], 'x') },
     options: pctOptions_()
   });
+
+  renderFee();
+}
+
+// ===== 圖六：一日值班費（三種檢視共用）=====
+function renderFee() {
+  var HQ_C = '#1a5e9e', AK_C = '#b34700';
+  var feeHq = {}, feeAk = {};
+  SERIES.hq.forEach(function (s) { if (s.fee != null) feeHq[s.month] = s.fee; });
+  SERIES.ak.forEach(function (s) { if (s.fee != null) feeAk[s.month] = s.fee; });
+  var show = (VIEW === 'hq') ? [['總院', feeHq, HQ_C]]
+    : (VIEW === 'ak') ? [['安康', feeAk, AK_C]]
+    : [['總院', feeHq, HQ_C], ['安康', feeAk, AK_C]];
+  var L = [];
+  show.forEach(function (x) { Object.keys(x[1]).forEach(function (m) { if (L.indexOf(m) < 0) L.push(m); }); });
+  L.sort();
+
+  destroyChart('c6');
+  CHARTS.c6 = new Chart(document.getElementById('c6'), {
+    data: { labels: L, datasets: show.map(function (x) {
+      return { type: (VIEW === 'all') ? 'line' : 'bar', label: x[0],
+        data: L.map(function (m) { return (m in x[1]) ? x[1][m] : null; }),
+        borderColor: x[2], backgroundColor: x[2], tension: .2, spanGaps: true };
+    }) },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { tooltip: { callbacks: { label: function (c) {
+        return c.dataset.label + ': ' + Number(c.parsed.y).toLocaleString() + ' 元'; } } } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: '金額（元）' },
+        ticks: { callback: function (v) { return Number(v).toLocaleString(); } } } } }
+  });
+
+  var html = '<table><tr><th></th>' + L.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr>';
+  show.forEach(function (x) {
+    html += '<tr><td>' + x[0] + '</td>' + L.map(function (m) {
+      return '<td>' + ((m in x[1]) ? Number(x[1][m]).toLocaleString() : '') + '</td>';
+    }).join('') + '</tr>';
+  });
+  document.getElementById('t6').innerHTML = L.length ? html + '</table>' : '<div class="hint">尚無一日值班費資料</div>';
 }
 
 // ===== 型態比例工具 =====
@@ -391,6 +437,8 @@ function renderCompare() {
     data: { labels: L, datasets: ds5 },
     options: pctOptions_()
   });
+
+  renderFee();
 }
 
 // ===== PNG 下載（白底）=====
