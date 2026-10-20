@@ -4,12 +4,13 @@
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>表單下載 | 耕莘醫院麻醉部</title>
+<title>表單／海報下載 | 耕莘醫院麻醉部</title>
 <style>
   body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 16px; }
   .wrap { max-width: 760px; margin: 0 auto; }
   h1 { font-size: 1.25rem; color: #1a3c5e; }
   .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 18px 20px; margin-bottom: 14px; }
+  h2.grp { font-size: 1.05rem; color: #456; margin: 22px 0 8px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
   .card h2 { font-size: 1.1rem; color: #1a3c5e; margin: 0 0 4px; }
   .sub { color: #789; font-size: .85rem; margin-bottom: 12px; }
   .note { color: #555; font-size: .9rem; margin-bottom: 12px; }
@@ -32,11 +33,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>耕莘醫院麻醉部｜表單下載</h1>
+  <h1>耕莘醫院麻醉部｜表單／海報下載</h1>
   <div id="status">載入中…</div>
   <div id="list"></div>
   <div class="card tip">
-    下載後可直接開啟列印，或交付印刷廠印製。若畫面顯示的日期不是最新，請按 Ctrl+F5 重新整理。
+    下載後可直接開啟列印，或交付印刷廠印製（海報請依標示尺寸輸出）。若畫面顯示的日期不是最新，請按 Ctrl+F5 重新整理。
   </div>
   <div class="back"><a href="index.html">← 回系統首頁</a></div>
 </div>
@@ -49,25 +50,31 @@ function esc(s) { return String(s || '').replace(/[&<>"]/g, function (c) { retur
 fetch('forms/forms.json?ts=' + Date.now(), { cache: 'no-store' })
   .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then(function (data) {
+    var groups = data.groups || [{ id: '', title: '' }];
     var html = '';
-    (data.forms || []).forEach(function (f) {
-      var vs = (f.versions || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
-      if (!vs.length) return;
-      var latest = vs[0];
-      html += '<div class="card">';
-      html += '<h2>' + esc(f.title) + '</h2>';
-      if (f.subtitle) html += '<div class="sub">' + esc(f.subtitle) + '</div>';
-      if (f.note) html += '<div class="note">' + esc(f.note) + '</div>';
-      html += '<div class="latest"><a class="btn" href="forms/' + encodeURIComponent(latest.file) + '" target="_blank">下載最新版 PDF</a>';
-      html += '<span class="ver">版本日期 <b>' + fmt(latest.date) + '</b></span></div>';
-      if (vs.length > 1) {
-        html += '<details><summary>舊版本（' + (vs.length - 1) + '）</summary><ul>';
-        vs.slice(1).forEach(function (v) {
-          html += '<li><a href="forms/' + encodeURIComponent(v.file) + '" target="_blank">' + fmt(v.date) + '</a></li>';
-        });
-        html += '</ul></details>';
-      }
-      html += '</div>';
+    groups.forEach(function (g) {
+      var items = (data.forms || []).filter(function (f) { return (f.group || '') === g.id; });
+      if (!items.length) return;
+      if (g.title) html += '<h2 class="grp">' + esc(g.title) + '</h2>';
+      items.forEach(function (f) {
+        var vs = (f.versions || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+        if (!vs.length) return;
+        var latest = vs[0];
+        html += '<div class="card">';
+        html += '<h2>' + esc(f.title) + '</h2>';
+        if (f.subtitle) html += '<div class="sub">' + esc(f.subtitle) + '</div>';
+        if (f.note) html += '<div class="note">' + esc(f.note) + '</div>';
+        html += '<div class="latest"><a class="btn" href="forms/' + encodeURIComponent(latest.file) + '" target="_blank">下載最新版 PDF</a>';
+        html += '<span class="ver">版本日期 <b>' + fmt(latest.date) + '</b></span></div>';
+        if (vs.length > 1) {
+          html += '<details><summary>舊版本（' + (vs.length - 1) + '）</summary><ul>';
+          vs.slice(1).forEach(function (v) {
+            html += '<li><a href="forms/' + encodeURIComponent(v.file) + '" target="_blank">' + fmt(v.date) + '</a></li>';
+          });
+          html += '</ul></details>';
+        }
+        html += '</div>';
+      });
     });
     document.getElementById('list').innerHTML = html || '<div class="card">目前沒有可下載的表單。</div>';
     document.getElementById('status').textContent = '';

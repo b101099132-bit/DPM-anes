@@ -1,10 +1,26 @@
 {
+  "groups": [
+    {
+      "id": "forms",
+      "title": "表單"
+    },
+    {
+      "id": "posters",
+      "title": "海報／公告"
+    }
+  ],
   "forms": [
     {
       "id": "charge",
+      "group": "forms",
       "title": "麻醉收費通知單",
       "subtitle": "表單編號 BEB61012｜一式三聯（帳務/會計/自存）｜料號 4314072",
       "note": "交付印刷廠印製三聯複寫表單時，請使用最新版。",
+      "src": {
+        "dir": "麻醉部作業標準/收費單",
+        "prefix": "收費單-"
+      },
+      "site": "charge-form-",
       "versions": [
         {
           "date": "20261020",
@@ -13,6 +29,74 @@
         {
           "date": "20251231",
           "file": "charge-form-20251231.pdf"
+        }
+      ]
+    },
+    {
+      "id": "poster-ercp",
+      "group": "posters",
+      "title": "ERCP 舒眠麻醉自費收費公告",
+      "subtitle": "A3 直式",
+      "src": {
+        "dir": "麻醉部作業標準/海報",
+        "prefix": "ERCP舒眠麻醉自費收費公告-"
+      },
+      "site": "poster-ercp-",
+      "versions": [
+        {
+          "date": "20260922",
+          "file": "poster-ercp-20260922.pdf"
+        }
+      ]
+    },
+    {
+      "id": "poster-upper-limb",
+      "group": "posters",
+      "title": "上肢手術麻醉方式",
+      "subtitle": "A1 直式海報",
+      "src": {
+        "dir": "麻醉部作業標準/海報",
+        "prefix": "上肢手術麻醉方式-"
+      },
+      "site": "poster-upper-limb-",
+      "versions": [
+        {
+          "date": "20260630",
+          "file": "poster-upper-limb-20260630.pdf"
+        }
+      ]
+    },
+    {
+      "id": "poster-hemorrhoid",
+      "group": "posters",
+      "title": "痔瘡瘻管手術麻醉方式",
+      "subtitle": "A1 直式海報",
+      "src": {
+        "dir": "麻醉部作業標準/海報",
+        "prefix": "痔瘡瘻管手術麻醉方式-"
+      },
+      "site": "poster-hemorrhoid-",
+      "versions": [
+        {
+          "date": "20260630",
+          "file": "poster-hemorrhoid-20260630.pdf"
+        }
+      ]
+    },
+    {
+      "id": "poster-gi-endoscopy",
+      "group": "posters",
+      "title": "麻醉腸胃鏡海報",
+      "subtitle": "A4 直式",
+      "src": {
+        "dir": "麻醉部作業標準/海報",
+        "prefix": "麻醉腸胃鏡海報-"
+      },
+      "site": "poster-gi-endoscopy-",
+      "versions": [
+        {
+          "date": "20260408",
+          "file": "poster-gi-endoscopy-20260408.pdf"
         }
       ]
     }
