@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>心臟血管外科自費整合同意書產生器 ver5</title>
+<title>心臟血管外科自費整合同意書產生器 ver3</title>
 <style>
   :root{--blue:#1d5fa8;--blue-d:#15457a;--line:#c9d4e0;--bg:#f3f6fa;--ink:#1b2733;}
   *{box-sizing:border-box;}
@@ -81,7 +81,7 @@
   .todo summary{cursor:pointer;font-weight:700;}
   .todo li{margin:3px 0;}
   .preview{flex:1;height:100vh;overflow-y:auto;padding:24px;display:flex;justify-content:center;background:#f3f6fa;}
-  .paper{background:#fff;width:794px;max-width:100%;padding:28px 38px;box-shadow:0 2px 14px rgba(0,0,0,.1);font-size:15.5px;line-height:1.7;height:fit-content;position:relative;}
+  .paper{background:#fff;width:794px;max-width:none;transform-origin:top left;padding:28px 38px;box-shadow:0 2px 14px rgba(0,0,0,.1);font-size:15.5px;line-height:1.7;height:fit-content;position:relative;}
   .sheet{width:100%;border-collapse:collapse;}
   .sheet>thead>tr>td,.sheet>tfoot>tr>td,.sheet>tbody>tr>td{border:0;padding:0;}
   .phd{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px;padding-bottom:2px;}
@@ -132,6 +132,48 @@
     .itbl tr{page-break-inside:avoid;}
     .sign{page-break-inside:avoid;}
     @page{size:A4;margin:12mm 12mm 14mm 12mm;}
+    .mtabs{display:none !important;} body.m-fill .preview{display:block !important;}
+    .pv-wrap{display:block;height:auto !important;} .paper{transform:none !important;}
+  }
+  /* ===== 手機／平板直向：上下堆疊 + 填寫／預覽切換（≤900px，僅螢幕） ===== */
+  .mtabs{display:none;}
+  .pv-wrap{display:contents;}
+  @media screen and (max-width:900px){
+    .app{flex-direction:column;min-height:100vh;}
+    .mtabs{display:flex;position:sticky;top:0;z-index:7;background:#fff;border-bottom:1px solid var(--line);box-shadow:0 1px 4px rgba(0,0,0,.06);}
+    .mtabs button{flex:1;padding:13px 8px;border:0;background:#fff;font-size:15px;font-weight:700;color:#6b7886;border-bottom:3px solid transparent;font-family:inherit;cursor:pointer;}
+    .mtabs button.on{color:var(--blue);border-bottom-color:var(--blue);}
+    .panel{width:100%;max-width:none;height:auto;border-right:0;overflow:visible;}
+    .phead{position:static;padding:10px 14px;}
+    .phead img{height:36px;}
+    .phead h1{font-size:15px;}
+    .pbody{padding:12px 12px 96px;}
+    .preview{height:auto;overflow:visible;display:block;padding:10px 8px 96px;}
+    .pv-wrap{display:block;width:100%;overflow:hidden;}
+    .paper{width:794px;max-width:none;transform-origin:top left;margin:0;}
+    .pv-empty{display:block;padding:40px 12px;}
+    body.m-fill .preview{display:none;}
+    body.m-preview .pbody,body.m-preview .phead{display:none;}
+    /* 底部操作列固定 */
+    .actions{position:fixed;left:0;right:0;bottom:0;z-index:8;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -2px 8px rgba(0,0,0,.08);}
+    .actions .sum{flex:1 1 100%;text-align:center;}
+    .actions .btn{flex:1;padding:12px 8px;font-size:15px;}
+    .actions .btn-word{display:none;} /* 手機版隱藏 Word 匯出，保留列印 */
+    /* 表單密度與觸控目標 */
+    .grid{grid-template-columns:1fr 1fr;}
+    .fld.w3{grid-column:span 2;}
+    .fld input,.fld select,.addrow input,.toolbar input,.qtybox input,.selrow .q{font-size:16px;}
+    .fld input,.fld select{padding:10px 10px;}
+    .chip{padding:10px 14px;font-size:14px;}
+    .item{padding:12px 12px;}
+    .item input[type=checkbox]{width:22px;height:22px;}
+    .item .nm{font-size:15px;}
+    .reasons{font-size:14px;}
+    .reasons input{width:20px;height:20px;}
+  }
+  @media screen and (max-width:600px){
+    .grid{grid-template-columns:1fr;}
+    .fld.w2,.fld.w3{grid-column:span 1;}
   }
 </style>
 <style id="outStyle">
@@ -143,6 +185,10 @@
 </head>
 <body>
 <div class="app">
+  <div class="mtabs" id="mtabs">
+    <button type="button" class="on" id="mtabFill" onclick="setMode('fill')">填寫</button>
+    <button type="button" id="mtabPreview" onclick="setMode('preview')">預覽同意書</button>
+  </div>
   <div class="panel">
     <div class="phead">
       <img id="headLogo" alt="">
@@ -185,11 +231,11 @@
     <div class="actions">
       <div class="sum">已選 <b id="cnt">0</b> 項　合計 NT$ <b id="total">0</b></div>
       <button class="btn btn-ghost" onclick="clearAll()">清除全部</button>
-      <button class="btn btn-ghost" onclick="exportWord()">產出 Word 檔</button>
+      <button class="btn btn-ghost btn-word" onclick="exportWord()">產出 Word 檔</button>
       <button class="btn btn-pri" onclick="window.print()">列印同意書</button>
     </div>
   </div>
-  <div class="preview"><div id="paper" class="paper"><div class="pv-empty">← 填好設定、選組套或勾品項，這裡會即時產生同意書</div></div></div>
+  <div class="preview"><div class="pv-wrap" id="pvWrap"><div id="paper" class="paper"><div class="pv-empty">填好設定、選組套或勾品項，這裡會即時產生同意書</div></div></div></div>
 </div>
 <script>
 /* ===== 相容舊瀏覽器 ===== */
@@ -204,7 +250,7 @@ var CONFIG={"title":"心臟血管外科自費整合同意書產生器","subtitle
 var CATS=["止血／凝血","傷口閉合","胸骨固定","人工瓣膜","微創／縫合器械","血管介入／閉合","靜脈曲張治療","其他"];
 var ITEMS=[{"code":"DX03P1","cat":"止血／凝血","name":"第九凝血因子 (Beriplex P/N)","spec":"","lic":"","price":11413,"unit":"劑","kind":"藥品","var":1},{"code":"SD04P1","cat":"止血／凝血","name":"凝血纖維蛋白原 Haemocomplettan P (Fibrinogen)","spec":"","lic":"","price":22500,"unit":"劑","kind":"藥品","var":1},{"code":"4603002","cat":"止血／凝血","name":"止血膠 Beriplast P 2ml（貝靈止血纖維蛋白膠）","spec":"2ml","lic":"","price":21000,"unit":"劑","kind":"特材","var":1},{"code":"4482014","cat":"止血／凝血","name":"止血膠 Tisseel 10ml","spec":"10ml","lic":"","price":37200,"unit":"劑","kind":"特材","var":1},{"code":"4423039","cat":"止血／凝血","name":"止血封合膠 AquaBrid","spec":"","lic":"","price":35100,"unit":"劑","kind":"特材","var":1},{"code":"4664002","cat":"止血／凝血","name":"止血膠 BioGlue 5ml","spec":"5ml","lic":"","price":49000,"unit":"劑","kind":"特材","var":1},{"code":"4406112","cat":"止血／凝血","name":"止血粉 Arista AH 3g（含塗佈器）","spec":"3g","lic":"","price":22000,"unit":"劑","kind":"特材","var":1},{"code":"4406113","cat":"止血／凝血","name":"止血粉 Arista AH 5g（含塗佈器）","spec":"5g","lic":"","price":35000,"unit":"劑","kind":"特材","var":1},{"code":"4406120","cat":"止血／凝血","name":"止血粉塗佈器","spec":"","lic":"","price":2730,"unit":"支","kind":"特材","var":0},{"code":"4402047","cat":"傷口閉合","name":"傷口免縫膠 INDERMIL（組織黏膠劑）","spec":"","lic":"","price":2640,"unit":"劑","kind":"特材","var":1},{"code":"4220356","cat":"傷口閉合","name":"傷口皮膚膠","spec":"","lic":"","price":1680,"unit":"劑","kind":"特材","var":1},{"code":"423029Q","cat":"傷口閉合","name":"導管固定膠","spec":"","lic":"","price":3000,"unit":"劑","kind":"特材","var":1},{"code":"4658003+4658005","cat":"胸骨固定","name":"胸骨固定骨板組 Sternalock（H型骨板×2＋骨釘×16）","spec":"H×2 釘×16","lic":"","price":108530,"unit":"組","kind":"組合","var":0,"note":"H型骨板 28,153×2＋骨釘 3,264×16"},{"code":"4658003","cat":"胸骨固定","name":"胸骨固定 H 型骨板","spec":"","lic":"","price":28153,"unit":"片","kind":"特材","var":1},{"code":"4658004","cat":"胸骨固定","name":"胸骨固定 V 型骨板","spec":"","lic":"","price":14077,"unit":"片","kind":"特材","var":1},{"code":"4658005","cat":"胸骨固定","name":"胸骨固定骨釘","spec":"","lic":"","price":3264,"unit":"釘","kind":"特材","var":1},{"code":"4428108","cat":"人工瓣膜","name":"生物瓣膜（牛）Edwards Magna","spec":"","lic":"","price":138787,"unit":"組","kind":"特材","var":0},{"code":"4619039","cat":"人工瓣膜","name":"生物性瓣膜（牛主動脈）Medtronic Avalus","spec":"","lic":"","price":166000,"unit":"組","kind":"特材","var":0},{"code":"4466086","cat":"人工瓣膜","name":"生物瓣膜（豬二尖瓣）Medtronic Mosaic","spec":"","lic":"","price":141870,"unit":"組","kind":"特材","var":0},{"code":"4416125","cat":"微創／縫合器械","name":"組織凝集刀 LigaSure","spec":"","lic":"","price":29900,"unit":"支","kind":"特材","var":0},{"code":"4416126","cat":"微創／縫合器械","name":"組織凝集刀 MICS LigaSure","spec":"","lic":"","price":32500,"unit":"支","kind":"特材","var":0},{"code":"4619041+4619042","cat":"微創／縫合器械","name":"自動打結器 COR-KNOT 組（裝置槍×1＋緊固圈×15）","spec":"槍×1 發×15","lic":"","price":109000,"unit":"組","kind":"組合","var":0,"note":"裝置槍 32,500×1＋緊固圈 5,100×15"},{"code":"4619041","cat":"微創／縫合器械","name":"自動打結器 COR-KNOT 裝置槍","spec":"","lic":"","price":32500,"unit":"組","kind":"特材","var":0},{"code":"4619042","cat":"微創／縫合器械","name":"自動打結器 COR-KNOT 緊固圈","spec":"","lic":"","price":5100,"unit":"發","kind":"特材","var":1},{"code":"—","cat":"微創／縫合器械","name":"微創手術專用體循導管 Smart cannula","spec":"","lic":"","price":58800,"unit":"組","kind":"特材","var":0,"note":"；待補代碼","warn":"待補代碼"},{"code":"4631024","cat":"血管介入／閉合","name":"血管內縫合器 Proglide","spec":"","lic":"","price":14500,"unit":"組","kind":"特材","var":1},{"code":"4451002","cat":"血管介入／閉合","name":"血管內止血器 Angio-Seal","spec":"","lic":"","price":13750,"unit":"組","kind":"特材","var":1},{"code":"4402028","cat":"血管介入／閉合","name":"“艾科思”EKOS 溶栓導管","spec":"","lic":"","price":132000,"unit":"組","kind":"特材","var":1},{"code":"4402058","cat":"靜脈曲張治療","name":"機械化學血管閉合輸注導管 MOCA (Clarivein)","spec":"","lic":"","price":85000,"unit":"組","kind":"特材","var":0},{"code":"4619015","cat":"靜脈曲張治療","name":"微創血管內射頻消融快速電燒閉合導管 EVRF（美敦力）","spec":"","lic":"","price":33000,"unit":"組","kind":"特材","var":1},{"code":"4619032","cat":"靜脈曲張治療","name":"美敦力迷納斯閉合系統 VenaSeal","spec":"","lic":"","price":96850,"unit":"組","kind":"特材","var":1},{"code":"4472046","cat":"靜脈曲張治療","name":"環型雷射光纖導管（群）","spec":"","lic":"","price":53200,"unit":"組","kind":"特材","var":1},{"code":"4230745","cat":"靜脈曲張治療","name":"靜脈內雷射靜脈曲張光纖導管（群）","spec":"","lic":"","price":40000,"unit":"組","kind":"特材","var":1},{"code":"4402050","cat":"靜脈曲張治療","name":"“吉恩司”二極體雷射 EVLT（吉時）","spec":"","lic":"","price":37700,"unit":"組","kind":"特材","var":1},{"code":"—","cat":"靜脈曲張治療","name":"硬化劑 Fibrovein（吉時）","spec":"","lic":"","price":0,"unit":"劑","kind":"藥品","var":1,"note":"；待補代碼與單價","warn":"待補代碼、待補單價"},{"code":"—","cat":"靜脈曲張治療","name":"JUZO 壓力小腿帶","spec":"","lic":"","price":4000,"unit":"雙","kind":"特材","var":0,"note":"；待補代碼","warn":"待補代碼"},{"code":"-","cat":"其他","name":"長效止痛劑／止痛劑","spec":"","lic":"","price":800,"unit":"劑","kind":"藥品","var":1,"note":"約 800 元"}];
 var PRESETS=[{"id":"b1","name":"傳統開胸手術（含骨板）","items":[{"code":"4406112","name":"止血粉 Arista AH 3g（含塗佈器）","qty":1},{"code":"4658003+4658005","name":"胸骨固定骨板組 Sternalock（H型骨板×2＋骨釘×16）","qty":1}]},{"id":"b2","name":"傳統開胸手術（不含骨板）","items":[{"code":"4406112","name":"止血粉 Arista AH 3g（含塗佈器）","qty":1}]},{"id":"b3","name":"微創冠狀動脈手術","items":[{"code":"4603002","name":"止血膠 Beriplast P 2ml（貝靈止血纖維蛋白膠）","qty":1},{"code":"—","name":"微創手術專用體循導管 Smart cannula","qty":1}]},{"id":"b4","name":"微創瓣膜手術","items":[{"code":"4406112","name":"止血粉 Arista AH 3g（含塗佈器）","qty":1},{"code":"4619041+4619042","name":"自動打結器 COR-KNOT 組（裝置槍×1＋緊固圈×15）","qty":1},{"code":"—","name":"微創手術專用體循導管 Smart cannula","qty":1}]},{"id":"b5","name":"大支架手術（TEVAR／EVAR）","items":[{"code":"4631024","name":"血管內縫合器 Proglide","qty":2}]}];
-var TODO=["尚無收費代碼：微創手術專用體循導管 Smart cannula、硬化劑 Fibrovein（吉時）、JUZO 壓力小腿帶","尚無單價（選用時請手填）：硬化劑 Fibrovein（吉時）","許可證字號空白（列印留空）：37 項（全部）","大支架手術組套（Proglide×2）為草稿，請心外確認。","微創瓣膜手術的生物瓣膜依狀況另勾。","資料來源：心外自費品項主檔.xlsx（2026-10-20 11:09 產生）"];
+var TODO=["尚無收費代碼：微創手術專用體循導管 Smart cannula、硬化劑 Fibrovein（吉時）、JUZO 壓力小腿帶","尚無單價（選用時請手填）：硬化劑 Fibrovein（吉時）","許可證字號空白（列印留空）：37 項（全部）","大支架手術組套（Proglide×2）為草稿，請心外確認。","微創瓣膜手術的生物瓣膜依狀況另勾。","資料來源：心外自費品項主檔.xlsx（2026-10-20 12:07 產生）"];
 
 
 /* ===== 自費原因條文（MRG0405 第四版）===== */
@@ -432,6 +478,34 @@ function docSel(){var sel=document.getElementById("p_docsel"),inp=document.getEl
 (function(){var d=new Date(),p=function(n){return String(n).padStart(2,'0');};document.getElementById("p_date").value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());})();
 document.getElementById("headLogo").src=LOGO;
 ["p_campus","p_doc","p_bed","p_date","p_blank"].forEach(function(id){var el=document.getElementById(id);el.addEventListener("input",renderForm);el.addEventListener("change",renderForm);});
-renderReasons();renderCats();renderPresets();filterList();renderSummary();renderForm();
+
+/* ===== 手機／平板：填寫／預覽切換 + A4 預覽等比縮放 ===== */
+function isNarrow(){return window.matchMedia&&window.matchMedia('(max-width:900px)').matches;}
+function setMode(m){
+  var pv=(m==='preview');
+  document.body.classList.toggle('m-preview',pv);
+  document.body.classList.toggle('m-fill',!pv);
+  document.getElementById('mtabFill').classList.toggle('on',!pv);
+  document.getElementById('mtabPreview').classList.toggle('on',pv);
+  window.scrollTo(0,0);
+  fitPaper();
+}
+function fitPaper(){
+  /* 預覽區不足 794px 寬時（手機、平板、桌機視窗縮小）等比縮放 A4 預覽，而非重排；列印不受影響 */
+  var paper=document.getElementById('paper'),wrap=document.getElementById('pvWrap'),pv=wrap&&wrap.parentNode;
+  if(!paper||!wrap)return;
+  var cs=window.getComputedStyle(pv),pad=(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0);
+  var avail=Math.max(0,pv.clientWidth-pad);
+  if(avail>=794){paper.style.transform='';wrap.style.height='';wrap.style.display='';wrap.style.width='';return;}
+  var sc=avail/794;
+  wrap.style.display='block';wrap.style.width='100%';
+  paper.style.transform='scale('+sc+')';
+  wrap.style.height=Math.ceil(paper.offsetHeight*sc)+'px';
+}
+document.body.classList.add('m-fill');
+window.addEventListener('resize',fitPaper);
+window.addEventListener('orientationchange',function(){setTimeout(fitPaper,150);});
+if(window.ResizeObserver){new ResizeObserver(function(){fitPaper();}).observe(document.getElementById('paper'));}
+renderReasons();renderCats();renderPresets();filterList();renderSummary();renderForm();fitPaper();
 </script>
 </body></html>
