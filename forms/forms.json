@@ -17,7 +17,7 @@
       "subtitle": "表單編號 BEB61012｜一式三聯（帳務/會計/自存）｜料號 4314072",
       "note": "交付印刷廠印製三聯複寫表單時，請使用最新版。",
       "src": {
-        "dir": "麻醉部作業標準/收費單",
+        "dir": "../Anes-Data/作業標準/收費單",
         "prefix": "收費單-"
       },
       "site": "charge-form-",
@@ -38,7 +38,7 @@
       "title": "ERCP 舒眠麻醉自費收費公告",
       "subtitle": "A3 直式",
       "src": {
-        "dir": "麻醉部作業標準/海報",
+        "dir": "../Anes-Data/作業標準/海報",
         "prefix": "ERCP舒眠麻醉自費收費公告-"
       },
       "site": "poster-ercp-",
@@ -55,7 +55,7 @@
       "title": "上肢手術麻醉方式",
       "subtitle": "A1 直式海報",
       "src": {
-        "dir": "麻醉部作業標準/海報",
+        "dir": "../Anes-Data/作業標準/海報",
         "prefix": "上肢手術麻醉方式-"
       },
       "site": "poster-upper-limb-",
@@ -72,7 +72,7 @@
       "title": "痔瘡瘻管手術麻醉方式",
       "subtitle": "A1 直式海報",
       "src": {
-        "dir": "麻醉部作業標準/海報",
+        "dir": "../Anes-Data/作業標準/海報",
         "prefix": "痔瘡瘻管手術麻醉方式-"
       },
       "site": "poster-hemorrhoid-",
@@ -89,7 +89,7 @@
       "title": "麻醉腸胃鏡海報",
       "subtitle": "A4 直式",
       "src": {
-        "dir": "麻醉部作業標準/海報",
+        "dir": "../Anes-Data/作業標準/海報",
         "prefix": "麻醉腸胃鏡海報-"
       },
       "site": "poster-gi-endoscopy-",
