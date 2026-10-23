@@ -36,7 +36,6 @@
       "id": "poster-ercp",
       "group": "posters",
       "title": "ERCP 舒眠麻醉自費收費公告",
-      "subtitle": "A3 直式",
       "src": {
         "dir": "../Anes-Data/作業標準/海報",
         "prefix": "ERCP舒眠麻醉自費收費公告-"
@@ -53,7 +52,6 @@
       "id": "poster-upper-limb",
       "group": "posters",
       "title": "上肢手術麻醉方式",
-      "subtitle": "A1 直式海報",
       "src": {
         "dir": "../Anes-Data/作業標準/海報",
         "prefix": "上肢手術麻醉方式-"
@@ -70,7 +68,6 @@
       "id": "poster-hemorrhoid",
       "group": "posters",
       "title": "痔瘡瘻管手術麻醉方式",
-      "subtitle": "A1 直式海報",
       "src": {
         "dir": "../Anes-Data/作業標準/海報",
         "prefix": "痔瘡瘻管手術麻醉方式-"
@@ -87,7 +84,6 @@
       "id": "poster-gi-endoscopy",
       "group": "posters",
       "title": "麻醉腸胃鏡海報",
-      "subtitle": "A4 直式",
       "src": {
         "dir": "../Anes-Data/作業標準/海報",
         "prefix": "麻醉腸胃鏡海報-"
