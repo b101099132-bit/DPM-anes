@@ -17,6 +17,9 @@
   table { border-collapse: collapse; font-size: .82rem; white-space: nowrap; }
   th, td { border: 1px solid #dde5ee; padding: 4px 8px; text-align: right; }
   th { background: #eef4fa; color: #1a3c5e; }
+  td small { font-size: .7rem; white-space: nowrap; }
+  td small.up { color: #0a7a2f; }
+  td small.down { color: #c0392b; }
   td:first-child, th:first-child { text-align: center; font-weight: bold; background: #f7fafd; }
   .dlbtn { font-size: .8rem; padding: 5px 12px; border: 1px solid #1a5e9e; background: #fff; color: #1a5e9e; border-radius: 6px; cursor: pointer; }
   .dlbtn:hover { background: #eef4fa; }
@@ -206,14 +209,33 @@ function yoyDatasets(data, type) {
       borderColor: c, backgroundColor: c, tension: .15, spanGaps: true };
   });
 }
+// 成長率標籤：(+5.2% YoY) / (−3.1% MoM)；前期缺值或為 0 時不顯示
+function pctTag(cur, prev, label) {
+  if (cur == null || prev == null || !prev) return '';
+  var p = (cur - prev) / prev * 100;
+  var s = (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%';
+  return ' <small class="' + (p >= 0 ? 'up' : 'down') + '">(' + s + ' ' + label + ')</small>';
+}
+function prevYearKey(m) { var p = m.split('/'); return (parseInt(p[0], 10) - 1) + '/' + p[1]; }
+function prevMonthKey(m) {
+  var p = m.split('/'), y = parseInt(p[0], 10), mm = parseInt(p[1], 10) - 1;
+  if (mm < 1) { mm = 12; y -= 1; }
+  return y + '/' + ('0' + mm).slice(-2);
+}
+function fmtN(v) { return v == null ? '' : Number(v).toLocaleString(); }
+
 function yoyTable(elId, data) {
   var ys = Object.keys(data).sort();
   var html = '<table><tr><th></th>';
   for (var m = 1; m <= 12; m++) html += '<th>' + m + '月</th>';
   html += '</tr>';
   ys.forEach(function (y) {
+    var py = data[String(parseInt(y, 10) - 1)] || {};
     html += '<tr><td>' + y + '年</td>';
-    for (var m = 1; m <= 12; m++) html += '<td>' + (m in data[y] ? data[y][m] : '') + '</td>';
+    for (var m = 1; m <= 12; m++) {
+      var v = (m in data[y]) ? data[y][m] : null;
+      html += '<td>' + fmtN(v) + pctTag(v, py[m], 'YoY') + '</td>';
+    }
     html += '</tr>';
   });
   document.getElementById(elId).innerHTML = html + '</table>';
@@ -324,7 +346,8 @@ function renderFee() {
   var html = '<table><tr><th></th>' + L.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr>';
   show.forEach(function (x) {
     html += '<tr><td>' + x[0] + '</td>' + L.map(function (m) {
-      return '<td>' + ((m in x[1]) ? Number(x[1][m]).toLocaleString() : '') + '</td>';
+      var v = (m in x[1]) ? x[1][m] : null;
+      return '<td>' + fmtN(v) + pctTag(v, x[1][prevMonthKey(m)], 'MoM') + '</td>';
     }).join('') + '</tr>';
   });
   document.getElementById('t6').innerHTML = L.length ? html + '</table>' : '<div class="hint">尚無一日值班費資料</div>';
@@ -350,10 +373,17 @@ function pctOptions_() {
 }
 
 // ===== 綜合檢視：兩院同圖對照（不加總）=====
-function compareTable_(elId, L, hqMap, akMap) {
+// growth: 'yoy'（對去年同月）| 'mom'（對上月）| 省略＝不顯示成長率
+function compareTable_(elId, L, hqMap, akMap, growth) {
+  function cell(map, m) {
+    var v = (m in map) ? map[m] : null;
+    var tag = growth === 'yoy' ? pctTag(v, map[prevYearKey(m)], 'YoY')
+            : growth === 'mom' ? pctTag(v, map[prevMonthKey(m)], 'MoM') : '';
+    return '<td>' + fmtN(v) + tag + '</td>';
+  }
   var html = '<table><tr><th></th>' + L.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr>';
-  html += '<tr><td>總院</td>' + L.map(function (m) { return '<td>' + (m in hqMap ? hqMap[m] : '') + '</td>'; }).join('') + '</tr>';
-  html += '<tr><td>安康</td>' + L.map(function (m) { return '<td>' + (m in akMap ? akMap[m] : '') + '</td>'; }).join('') + '</tr>';
+  html += '<tr><td>總院</td>' + L.map(function (m) { return cell(hqMap, m); }).join('') + '</tr>';
+  html += '<tr><td>安康</td>' + L.map(function (m) { return cell(akMap, m); }).join('') + '</tr>';
   document.getElementById(elId).innerHTML = html + '</table>';
 }
 
@@ -370,7 +400,7 @@ function renderCompare() {
     ] },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
   });
-  compareTable_('t1', L, hqT, akT);
+  compareTable_('t1', L, hqT, akT, 'yoy');
 
   destroyChart('c2');
   var hqG = mapOf_(SERIES.hq, 'gi'), akG = mapOf_(SERIES.ak, 'gi');
@@ -382,7 +412,7 @@ function renderCompare() {
     ] },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
   });
-  compareTable_('t2', L, hqG, akG);
+  compareTable_('t2', L, hqG, akG, 'yoy');
 
   // 圖三對照：兩院日均線 + 目標線
   document.getElementById('card3').style.display = 'block';
