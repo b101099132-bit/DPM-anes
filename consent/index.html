@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"><meta http-equiv="Cache-Control" content="no-cache, must-revalidate"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自費同意書產生器 下載</title>
+<style>
+  :root{--blue:#1d5fa8;--blue-d:#15457a;--line:#c9d4e0;--bg:#f3f6fa;--ink:#1b2733;--ok:#1f7a3a;--bad:#a32424;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:"Microsoft JhengHei","PingFang TC","Noto Sans CJK TC",sans-serif;color:var(--ink);background:var(--bg);}
+  .top{padding:14px 18px;background:#fff;border-bottom:2px solid var(--blue);}
+  .top h1{margin:0;font-size:18px;color:var(--blue-d);}
+  .top .t2{font-size:12.5px;color:#6b7886;margin-top:2px;}
+  .wrap{max-width:760px;margin:0 auto;padding:16px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+  .card h2{margin:0 0 4px;font-size:16px;color:var(--blue-d);}
+  .meta{font-size:12.5px;color:#6b7886;margin-bottom:8px;}
+  .meta b{color:var(--ok);}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .btn{padding:10px 16px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;background:#eef2f7;color:var(--ink);text-decoration:none;display:inline-block;}
+  .btn-pri{background:var(--blue);color:#fff;}
+  input[type=password]{padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:15px;font-family:inherit;min-width:180px;}
+  .msg{font-size:13px;color:#6b7886;min-height:1.2em;margin-top:6px;}
+  .msg.bad{color:var(--bad);}.msg.ok{color:var(--ok);}
+  .links a{display:block;padding:8px 0;border-bottom:1px solid #eef2f7;color:var(--blue);text-decoration:none;font-size:14px;}
+  .links a:last-child{border-bottom:none;}
+  .hint{font-size:12.5px;color:#6b7886;line-height:1.6;}
+  ol.hint{padding-left:20px;}
+</style>
+</head>
+<body>
+<div class="top"><h1>自費同意書產生器 — 最新版下載</h1><div class="t2">下載後放到自己電腦（或科內共用磁碟），雙擊開啟即可使用；每次有新版請回來重新下載。</div></div>
+<div class="wrap">
+  <div id="list"><div class="card"><div class="meta">讀取版本資訊中…</div></div></div>
+  <div class="card links"><h2>線上頁面</h2>
+    <a href="anes-prep.html">麻醉部 自費預計清單（備物）</a>
+    <a href="anes-checklist.html">麻醉部 自費當日核對（需核對金鑰）</a>
+    <a href="cvs-selfpay.html">心臟血管外科 自費整合同意書產生器（線上開啟）</a>
+  </div>
+  <div class="card"><h2>下載後怎麼用</h2>
+    <ol class="hint">
+      <li>把下載的 .html 檔放到固定位置（桌面或共用磁碟），用 Chrome／Edge 雙擊開啟；可以把它釘選到工作列或加入書籤。</li>
+      <li>舊版檔案請刪除，避免印到舊價格；檔名尾端的 ver 數字越大越新。</li>
+    </ol>
+  </div>
+</div>
+<script>
+function esc(t){return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function b64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;}
+function saveBlob(blob,fn){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},500);}
+async function decryptAndSave(entry,pw,msgEl){
+  msgEl.textContent="下載並解密中…";msgEl.className="msg";
+  try{
+    var r=await fetch(entry.file+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
+    var j=await r.json();
+    var keyMat=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),{name:"PBKDF2"},false,["deriveKey"]);
+    var key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(j.salt),iterations:j.iter||200000,hash:"SHA-256"},keyMat,{name:"AES-GCM",length:256},false,["decrypt"]);
+    var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(j.iv)},key,b64(j.ct));
+    saveBlob(new Blob([pt],{type:"text/html"}),entry.downloadName||"generator.html");
+    msgEl.textContent="✔ 已下載 "+(entry.downloadName||"");msgEl.className="msg ok";
+    try{localStorage.setItem("consent_dl_pw",pw);}catch(e){}
+  }catch(e){msgEl.textContent=(e&&e.name==="OperationError")?"✖ 密碼錯誤":"✖ 失敗："+(e&&e.message||e);msgEl.className="msg bad";}
+}
+async function plainSave(entry,msgEl){
+  msgEl.textContent="下載中…";msgEl.className="msg";
+  try{var r=await fetch(entry.file+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);saveBlob(await r.blob(),entry.downloadName||entry.file);msgEl.textContent="✔ 已下載 "+(entry.downloadName||"");msgEl.className="msg ok";}
+  catch(e){msgEl.textContent="✖ 失敗："+(e&&e.message||e);msgEl.className="msg bad";}
+}
+fetch("manifest.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(m){
+  var pw="";try{pw=localStorage.getItem("consent_dl_pw")||"";}catch(e){}
+  var box=document.getElementById("list");box.innerHTML="";
+  (m.items||[]).forEach(function(it,i){
+    var card=document.createElement("div");card.className="card";
+    card.innerHTML='<h2>'+esc(it.title)+'</h2><div class="meta">最新版本 <b>'+esc(it.version)+'</b>　更新時間 '+esc(it.updated)+(it.note?'　｜ '+esc(it.note):'')+'</div>'+
+      (it.encrypted?'<div class="row"><input type="password" id="pw'+i+'" placeholder="下載密碼" value="'+esc(pw)+'"><button class="btn btn-pri" id="dl'+i+'">下載最新版</button></div>':'<div class="row"><button class="btn btn-pri" id="dl'+i+'">下載最新版</button>'+(it.openUrl?'<a class="btn" href="'+esc(it.openUrl)+'">線上開啟</a>':'')+'</div>')+
+      '<div class="msg" id="msg'+i+'"></div>';
+    box.appendChild(card);
+    document.getElementById("dl"+i).onclick=function(){var me=document.getElementById("msg"+i);if(it.encrypted){var v=(document.getElementById("pw"+i).value||"").trim();if(!v){me.textContent="請輸入下載密碼";me.className="msg bad";return;}if(!window.crypto||!crypto.subtle){me.textContent="此瀏覽器不支援解密，請改用 Chrome／Edge 開啟本頁";me.className="msg bad";return;}decryptAndSave(it,v,me);}else plainSave(it,me);};
+  });
+  if(!(m.items||[]).length)box.innerHTML='<div class="card"><div class="meta">目前沒有可下載的檔案。</div></div>';
+}).catch(function(){document.getElementById("list").innerHTML='<div class="card"><div class="meta" style="color:var(--bad)">無法讀取版本資訊（manifest.json）。</div></div>';});
+</script>
+</body></html>
