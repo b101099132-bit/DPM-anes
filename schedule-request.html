@@ -208,7 +208,8 @@ function buildCal() {
 
 function tapDay(d) {
   var k = CATS[curCat].key;
-  if (k === '羅東聖母' && dayCat[d] !== k) {
+  // 115/12 以前聖母只有週一、二；116/01（2027/1）起擴大支援、排班規則未定 → 不限星期
+  if (k === '羅東聖母' && dayCat[d] !== k && CY * 100 + CM < 202701) {
     var w = new Date(CY, CM - 1, d).getDay();
     if (w !== 1 && w !== 2) { alert('羅東聖母只有星期一、星期二，請選週一或週二的日期'); return; }
   }

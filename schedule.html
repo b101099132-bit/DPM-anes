@@ -35,6 +35,7 @@
       <button onclick="dlPng()">總班表（圖片）</button>
       <button onclick="dlHospitalDoc()">醫院格式-醫療作業表（Word）</button>
       <button onclick="dlAnkangDoc()">安康值班表（Word）</button>
+      <button onclick="dlStDoc()">聖母班表（Word）</button>
       <span id="status">載入中…</span>
     </div>
   </div>
@@ -113,6 +114,19 @@ function whoOn(shift, day) {
   return names.length ? abbrOf(names[0]) : '';
 }
 function dispDay(day) { return day > 0 ? day : PDIM + day; }
+
+// ── 聖母兩格制（116/01＝2027/1 起）：格子值 聖母白班 / 聖母夜班 / 聖母全日（同一人白班＋on call夜班）──
+var ST_DAY = '聖母白班', ST_NIGHT = '聖母夜班', ST_BOTH = '聖母全日';
+function isSt2(day) { return (day > 0 ? Y * 100 + M : PY * 100 + PM) >= 202701; }
+function stNames(slot, day) {   // 該日該格的醫師全名（day<=0 為上月）
+  var roster = day > 0 ? DATA.roster : DATA.prevRoster;
+  var idx = day > 0 ? day - 1 : PDIM + day - 1;
+  return Object.keys(roster).filter(function (n) {
+    var v = String(roster[n][idx] || '');
+    return v === slot || v === ST_BOTH;
+  });
+}
+function stWho(slot, day) { return stNames(slot, day).map(abbrOf).join('/'); }
 function cfgList(h) {
   if (!DATA.cfg) return [];
   return String(DATA.cfg[DATA.cfgHeaders.indexOf(h)] || '').split(/[,，]/)
@@ -200,7 +214,23 @@ function buildMaster(forDoc) {
       h += td(bd, i < 5 ? 4 : 1, (d > DIM ? '' : whoOrNil('安康', d)));
     });
     h += '</tr>';
-    // 羅東聖母
+    // 羅東聖母：116/01 起拆「聖母白班」「聖母on call夜班」兩列（規則未定 → 每天都可排，空白＝未排，NIL＝標記排不出）
+    if (isSt2(1)) {
+      [[ST_DAY, '聖母白班'], [ST_NIGHT, '聖母on call夜班']].forEach(function (slot) {
+        h += '<tr>' + td(lbl, 1, slot[1]);
+        days.forEach(function (d, i) {
+          var span = i < 5 ? 4 : 1;
+          if (d > DIM) { h += td(bd, span, ''); return; }
+          if (!isSt2(d)) {   // 月初帶出的上月日仍是舊制（單格聖母）：放白班列，夜班列灰
+            h += (slot[0] === ST_DAY) ? td(bd, span, whoOn('聖母', d)) : td(gray, span, '');
+            return;
+          }
+          h += td(bd, span, stWho(slot[0], d) || (isNil(d, slot[0]) ? 'NIL' : ''));
+        });
+        h += '</tr>';
+      });
+      continue;
+    }
     h += '<tr>' + td(lbl, 1, '羅東聖母');
     days.forEach(function (d, i) {
       if (i >= 2) { h += td(gray, i < 5 ? 4 : 1, ''); return; } // 週三之後灰色
@@ -244,6 +274,36 @@ var DOC_COLORS = { '王': '#B8860B', '劉': '#000000', '李': '#E91E8C', '承': 
 function rocYM() {
   var p = document.getElementById('monthSel').value.split('/');
   return { y: p[0], m: p[1] };
+}
+
+// 聖母班表（Word）：116/01 起列 日期／星期／聖母白班／聖母on call夜班；之前月份列 日期／星期／聖母醫師
+// 只列有排班（或標 NIL）的日子，醫師用全名
+function dlStDoc() {
+  if (!DATA) return;
+  var ym = rocYM(), two = isSt2(1);
+  var WK = ['日', '一', '二', '三', '四', '五', '六'];
+  var CELL = 'style="font-size:14pt;padding:4px 8px"';
+  var rows = '';
+  for (var d = 1; d <= DIM; d++) {
+    var cols;
+    if (two) {
+      cols = [ST_DAY, ST_NIGHT].map(function (s) { return stNames(s, d).join('、') || (isNil(d, s) ? 'NIL' : ''); });
+    } else {
+      var names = Object.keys(DATA.roster).filter(function (n) { return String(DATA.roster[n][d - 1] || '') === '聖母'; });
+      cols = [names.join('、') || (isNil(d, '聖母') ? 'NIL' : '')];
+    }
+    if (!cols.some(function (x) { return x; })) continue;
+    rows += '<tr><td ' + CELL + '>' + parseInt(ym.m, 10) + '/' + d + '</td><td ' + CELL + '>' + WK[new Date(Y, M - 1, d).getDay()] + '</td>' +
+      cols.map(function (x) { return '<td ' + CELL + '>' + x + '</td>'; }).join('') + '</tr>';
+  }
+  if (!rows) { alert(ym.y + '/' + ym.m + ' 班表中沒有任何聖母班'); return; }
+  var head = two ? ['日期', '星期', '聖母白班', '聖母on call夜班'] : ['日期', '星期', '聖母醫師'];
+  var widths = two ? [28, 20, 52, 52] : [35, 25, 70];
+  var h = '<p style="font-size:18pt;font-weight:bold;text-align:center;margin:0 0 8pt">' + ym.y + '年' + ym.m + '月份麻醉科羅東聖母醫院支援班表</p>';
+  h += '<table><tr>' + head.map(function (t, i) {
+    return '<td style="font-size:14pt;font-weight:bold;padding:4px 8px;width:' + widths[i] + 'mm;background:#EBF1DD">' + t + '</td>';
+  }).join('') + '</tr>' + rows + '</table>';
+  wordBlob('聖母班表', h, ym.y + '年' + ym.m + '月份麻醉科聖母班表.doc', [20, 25, 25, 25]);
 }
 
 // 醫院格式：醫療作業表（比照原檔：標楷體、標題16pt置中、表格10-11pt、章節一、二、四、五）

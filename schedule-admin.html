@@ -28,6 +28,7 @@
   table.sched td.prev { background: #f0f0f0; color: #999; }
   .s-白班 { background: #d6e6f7; } .s-值班 { background: #f5c6c2; } .s-鏡檢 { background: #c9ede4; }
   .s-安康 { background: #d5f0d0; } .s-聖母 { background: #e2e2e2; } .s-二線班 { background: #e3d6f2; }
+  .s-聖母白班 { background: #e2e2e2; } .s-聖母夜班 { background: #c9cdd6; } .s-聖母全日 { background: #b4bac6; }
   .s-OFF { background: #fafafa; color: #aaa; } .s-休 { background: #efe0f5; color: #8e44ad; }
   .pal { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   .pal span { padding: 5px 12px; border-radius: 14px; border: 2px solid transparent; cursor: pointer; font-size: .85rem; }
@@ -128,6 +129,23 @@
 <script>
 var SHIFTS = ['白班', '值班', '鏡檢', '安康', '聖母', '二線班', 'OFF', '休'];
 var POINTS = { '值班': 3, '白班': 1, '鏡檢': 1, '二線班': 1, '聖母': 0, '安康': 0 };
+// ── 116/01（2027/1）起：聖母班拆成「聖母白班」「聖母on call夜班」兩格（排班規則未定 → 只供手動排，不自動排、不檢核）──
+//    格子值：聖母白班 / 聖母夜班 / 聖母全日（同一醫師當天白班＋on call夜班）
+var ST_DAY = '聖母白班', ST_NIGHT = '聖母夜班', ST_BOTH = '聖母全日';
+var ST2 = false;                                   // 目前載入的月份是否適用兩格制
+var ST_SHORT = { '聖母白班': '聖白', '聖母夜班': '聖夜', '聖母全日': '聖全' };   // 醫師格網內的短顯示
+var ST_LABEL = { '聖母白班': '聖母白班', '聖母夜班': '聖母on call夜班' };       // 班別視角列名
+function isSt2Month(y, m) { return y * 100 + m >= 202701; }
+function isStVal(v) { return v === ST_DAY || v === ST_NIGHT || v === ST_BOTH; }
+function holds(v, s) { return v === s || (v === ST_BOTH && (s === ST_DAY || s === ST_NIGHT)); }
+function stRemove(v, s) { return v === ST_BOTH ? (s === ST_DAY ? ST_NIGHT : ST_DAY) : (v === s ? '' : v); }
+function buildPalette() {
+  var html = '';
+  SHIFTS.forEach(function (s, i) {
+    html += '<span class="s-' + s + (i === curShift ? ' sel' : '') + '" onclick="pickShift(' + i + ')">' + s + '</span>';
+  });
+  document.getElementById('pal').innerHTML = html;
+}
 var EXCLUDE_GRID = ['鄒美勇']; // 部長固定二線，不入班表格
 var WB = null, GRID = {}, DIM = 0, Y = 0, M = 0, curShift = 0, VIOL = {};
 var NILS = {}; // {'20_聖母': true} 確認排不出人的班別
@@ -146,11 +164,7 @@ function init() {
   document.getElementById('month').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
   var hash = getPasscode();
   if (hash) document.getElementById('adminPass').value = hash;
-  var html = '';
-  SHIFTS.forEach(function (s, i) {
-    html += '<span class="s-' + s + (i === 0 ? ' sel' : '') + '" onclick="pickShift(' + i + ')">' + s + '</span>';
-  });
-  document.getElementById('pal').innerHTML = html;
+  buildPalette();
 }
 
 function pickShift(i) {
@@ -178,6 +192,13 @@ function login() {
     var iso = document.getElementById('month').value.split('-');
     Y = parseInt(iso[0], 10); M = parseInt(iso[1], 10);
     DIM = new Date(Y, M, 0).getDate();
+    // 聖母班制：116/01 起兩格制，班別選單與班別視角列隨月份切換
+    ST2 = isSt2Month(Y, M);
+    SHIFTS = ST2 ? ['白班', '值班', '鏡檢', '安康', ST_DAY, ST_NIGHT, ST_BOTH, '二線班', 'OFF', '休']
+                 : ['白班', '值班', '鏡檢', '安康', '聖母', '二線班', 'OFF', '休'];
+    SGRID_SHIFTS = ST2 ? ['值班', '白班', '鏡檢', '安康', ST_DAY, ST_NIGHT, '二線班']
+                       : ['值班', '白班', '鏡檢', '安康', '聖母', '二線班'];
+    curShift = 0; buildPalette();
     document.getElementById('loginMsg').textContent = '';
     document.getElementById('work').style.display = 'block';
     document.getElementById('whoBadge').textContent = '｜' + res.who + '｜' + rocM();
@@ -320,7 +341,7 @@ function renderGrid() {
     for (var d = 1; d <= DIM; d++) {
       var v = GRID[doc.name][d - 1] || '';
       var cls = 'cell' + (v ? ' s-' + v : '') + (VIOL[doc.name + '_' + d] ? ' viol' : '');
-      html += '<td class="' + cls + '" onclick="tapCell(\'' + doc.name + '\',' + d + ')" title="' + (VIOL[doc.name + '_' + d] || '') + '">' + v + '</td>';
+      html += '<td class="' + cls + '" onclick="tapCell(\'' + doc.name + '\',' + d + ')" title="' + (VIOL[doc.name + '_' + d] || (ST_SHORT[v] ? v : '')) + '">' + (ST_SHORT[v] || v) + '</td>';
     }
     html += '</tr>';
   });
@@ -329,7 +350,7 @@ function renderGrid() {
   html += '<tr><td class="doc">已排/應排</td><td class="prev"></td><td class="prev"></td>';
   for (var d2 = 1; d2 <= DIM; d2++) {
     var got = 0;
-    docs.forEach(function (doc) { var v = GRID[doc.name][d2 - 1]; if (v && v !== 'OFF' && v !== '休') got++; });
+    docs.forEach(function (doc) { var v = GRID[doc.name][d2 - 1]; if (v && v !== 'OFF' && v !== '休' && !(ST2 && isStVal(v))) got++; });
     var need = requiredShifts(d2, c).filter(function (s) { return !isNil(d2, s); }).length;
     html += '<td style="' + (got !== need ? 'color:#c0392b;font-weight:bold' : 'color:#0a7a2f') + '">' + got + '/' + need + '</td>';
   }
@@ -349,9 +370,9 @@ function renderShiftGrid() {
   }
   html += '</tr>';
   SGRID_SHIFTS.forEach(function (s) {
-    html += '<tr><td class="doc">' + s + '</td>';
+    html += '<tr><td class="doc">' + (ST_LABEL[s] || s) + '</td>';
     for (var d = 1; d <= DIM; d++) {
-      var whos = docs.filter(function (doc) { return GRID[doc.name][d - 1] === s; })
+      var whos = docs.filter(function (doc) { return holds(GRID[doc.name][d - 1], s); })
         .map(function (doc) { return abbrOf(doc.name); });
       var nil = isNil(d, s);
       var content = nil ? 'NIL' : whos.join('/');
@@ -367,12 +388,12 @@ function openPicker(ev, shift, d) {
   var c = cfgSets();
   var pk = document.getElementById('picker');
   var docs = gridDoctors();
-  var html = '<div style="font-size:.8rem;color:#345;margin:2px 4px"><b>' + d + '日 ' + DOWTXT[dow(d)] + '｜' + shift + '</b></div>';
+  var html = '<div style="font-size:.8rem;color:#345;margin:2px 4px"><b>' + d + '日 ' + DOWTXT[dow(d)] + '｜' + (ST_LABEL[shift] || shift) + '</b></div>';
   docs.forEach(function (doc) {
     var cur = GRID[doc.name][d - 1];
-    var ok = eligible(doc.name, d, shift, c) || cur === shift;
+    var ok = eligible(doc.name, d, shift, c) || holds(cur, shift);
     html += '<span class="' + (ok ? '' : 'bad') + '" onclick="pickAssign(\'' + shift + '\',' + d + ',\'' + doc.name + '\')">' +
-      abbrOf(doc.name) + (cur && cur !== shift ? '(' + cur + ')' : '') + '</span>';
+      abbrOf(doc.name) + (cur && !holds(cur, shift) ? '(' + (ST_SHORT[cur] || cur) + ')' : '') + '</span>';
   });
   html += '<br><span class="nilopt" onclick="pickAssign(\'' + shift + '\',' + d + ',\'__NIL__\')">NIL 排不出人</span>';
   html += '<span class="clropt" onclick="pickAssign(\'' + shift + '\',' + d + ',\'__CLR__\')">清除</span>';
@@ -389,14 +410,18 @@ document.addEventListener('click', function () {
 
 function pickAssign(shift, d, who) {
   // 先清掉該班別當天原本的人
+  var isSt = (shift === ST_DAY || shift === ST_NIGHT);
   gridDoctors().forEach(function (doc) {
-    if (GRID[doc.name][d - 1] === shift) GRID[doc.name][d - 1] = '';
+    var cur = GRID[doc.name][d - 1];
+    if (holds(cur, shift)) GRID[doc.name][d - 1] = isSt ? stRemove(cur, shift) : '';   // 聖母全日只拿掉這一半
   });
   delete NILS[d + '_' + shift];
   if (who === '__NIL__') {
     NILS[d + '_' + shift] = true;
   } else if (who !== '__CLR__') {
-    GRID[who][d - 1] = shift; // 覆蓋該醫師當天原值
+    var other = (shift === ST_DAY) ? ST_NIGHT : ST_DAY;
+    // 同一醫師已有另一半聖母班 → 合併為「聖母全日」；否則覆蓋該醫師當天原值
+    GRID[who][d - 1] = (isSt && GRID[who][d - 1] === other) ? ST_BOTH : shift;
   }
   document.getElementById('picker').style.display = 'none';
   runValidate();
@@ -420,6 +445,7 @@ function requiredShifts(d, c) {
   var out = ['值班', '安康'];
   var monOfWeek = d - ((w + 6) % 7); // 該週週一日期
   var stWeek = (w === 1 || w === 2) && c.nost.indexOf(w === 1 ? d : d - 1) < 0;
+  if (ST2) stWeek = false;   // 兩格制規則未定：聖母班不列入應排（不檢核缺班）
   if (isHol) {
     if (stWeek) out.push('聖母');
     return out;
@@ -435,6 +461,7 @@ function requiredShifts(d, c) {
 function eligible(name, d, s, c) {
   var abbr = abbrOf(name);
   var cur = GRID[name][d - 1];
+  if (s === ST_DAY || s === ST_NIGHT) return !cur || isStVal(cur);   // 兩格制規則未定：只看當天是否已有其他班
   if (cur && cur !== s) return false;
   if (s === '值班' && (abbr === '李' || abbr === '劉')) return false;
   if (s === '聖母' && ['李', '王', '昀', '劉'].indexOf(abbr) >= 0) return false;
@@ -485,10 +512,14 @@ function tryOnce(c) {
   var g = {};
   docs.forEach(function (n) { g[n] = Array.from({ length: 31 }, function () { return ''; }); });
   var saveG = GRID; GRID = g; // eligible/points 引用 GRID
+  // 0. 兩格制月份：手動排好的聖母白班/夜班原樣保留（引擎不排聖母，也不會洗掉）
+  if (ST2) docs.forEach(function (n) {
+    (saveG[n] || []).forEach(function (v, i) { if (isStVal(v)) g[n][i] = v; });
+  });
   // 1. 休假
   docs.forEach(function (n) {
     var r = reqOf(n);
-    if (r) parseDays(r['休假']).forEach(function (d) { if (d <= DIM) g[n][d - 1] = '休'; });
+    if (r) parseDays(r['休假']).forEach(function (d) { if (d <= DIM && !g[n][d - 1]) g[n][d - 1] = '休'; });
   });
   // 2. 要班（指定）
   var wants = { '值班': {}, '鏡檢': {}, '安康': {}, '聖母': {} };
@@ -513,6 +544,7 @@ function tryOnce(c) {
   }
   // 4. 聖母週（一+二同醫師）
   for (var d = 1; d <= DIM; d++) {
+    if (ST2) break;   // 116/01 起兩格制，規則未定 → 不自動排聖母
     if (dow(d) !== 1) continue;
     if (c.nost.indexOf(d) >= 0) continue;
     if (isNil(d, '聖母') && isNil(d + 1, '聖母')) continue; // 兩天都標 NIL
@@ -627,6 +659,7 @@ function collectViolations(c) {
       var v = GRID[n][d - 1];
       if (!v || v === 'OFF' || v === '休') return;
       var abbr = abbrOf(n);
+      if (ST2 && isStVal(v)) return;   // 兩格制聖母班：規則未定，不做個人/日別檢核（同格重複在下方另查）
       if (seen[v]) out.push({ n: n, d: d, msg: d + '日 ' + v + ' 重複（' + seen[v] + '/' + abbr + '）' });
       seen[v] = abbr;
       if (req.indexOf(v) < 0 && v !== '二線班') out.push({ n: n, d: d, msg: d + '日不應排「' + v + '」（' + abbr + '）' });
@@ -640,6 +673,10 @@ function collectViolations(c) {
         if (!okAk && !okWh) out.push({ n: n, d: d, msg: abbr + ' 值班隔天不可排班（' + d + '日）' });
       }
       if (yv === '聖母' && dow(d) === 3) out.push({ n: n, d: d, msg: abbr + ' 聖母後週三不排班（' + d + '日）' });
+    });
+    if (ST2) [ST_DAY, ST_NIGHT].forEach(function (s) {   // 同一格兩人 → 重複
+      var hs = docs.filter(function (n) { return holds(GRID[n][d - 1], s); });
+      if (hs.length > 1) out.push({ n: hs[1], d: d, msg: d + '日 ' + ST_LABEL[s] + ' 重複（' + hs.map(abbrOf).join('/') + '）' });
     });
     req.forEach(function (s) {
       if (s === '二線班') return;
@@ -670,16 +707,22 @@ function runValidate() {
 
 function renderStats() {
   var docs = gridDoctors();
-  var cols = ['值班', '白班', '鏡檢', '二線班', '安康', '聖母', '休', '總班數'];
-  var html = '<tr><th>醫師</th>' + cols.map(function (s) { return '<th>' + s + '</th>'; }).join('') +
-    (WB.isAdmin ? '<th>總點值</th>' : '') + '</tr>';
+  var cols = ST2 ? ['值班', '白班', '鏡檢', '二線班', '安康', ST_DAY, ST_NIGHT, '休', '總班數']
+                 : ['值班', '白班', '鏡檢', '二線班', '安康', '聖母', '休', '總班數'];
+  // 只顯示各班別班數與總班數；點值規則改由績效分析系統處理，這裡不再顯示
+  var html = '<tr><th>醫師</th>' + cols.map(function (s) { return '<th>' + (ST_LABEL[s] || s) + '</th>'; }).join('') + '</tr>';
   docs.forEach(function (d) {
     var cnt = {};
-    GRID[d.name].forEach(function (v) { if (v) cnt[v] = (cnt[v] || 0) + 1; });
-    var tot = GRID[d.name].filter(function (v) { return v && v !== 'OFF' && v !== '休'; }).length;
+    GRID[d.name].forEach(function (v) {
+      if (!v) return;
+      if (v === ST_BOTH) { cnt[ST_DAY] = (cnt[ST_DAY] || 0) + 1; cnt[ST_NIGHT] = (cnt[ST_NIGHT] || 0) + 1; }   // 全日＝白班＋夜班各一
+      else cnt[v] = (cnt[v] || 0) + 1;
+    });
+    var tot = 0;   // 總班數：聖母全日＝白班＋on call夜班，算 2 班
+    GRID[d.name].forEach(function (v) { if (v && v !== 'OFF' && v !== '休') tot += (v === ST_BOTH ? 2 : 1); });
     html += '<tr><td>' + d.name + '</td>' + cols.map(function (s) {
-      return '<td>' + (s === '總班數' ? tot : (cnt[s] || 0)) + '</td>';
-    }).join('') + (WB.isAdmin ? '<td><b>' + pointsOf(d.name) + '</b></td>' : '') + '</tr>';
+      return '<td>' + (s === '總班數' ? '<b>' + tot + '</b>' : (cnt[s] || 0)) + '</td>';
+    }).join('') + '</tr>';
   });
   document.getElementById('statTable').innerHTML = html;
 }
