@@ -36,6 +36,7 @@
       <button onclick="dlHospitalDoc()">醫院格式-醫療作業表（Word）</button>
       <button onclick="dlAnkangDoc()">安康值班表（Word）</button>
       <button onclick="dlStDoc()">聖母班表（Word）</button>
+      <button onclick="dlOtDoc()">加值班紀錄單（Word）</button>
       <span id="status">載入中…</span>
     </div>
   </div>
@@ -251,7 +252,7 @@ function buildMaster(forDoc) {
 }
 
 // Word 相容 HTML（含 A4 版面與邊界設定，單位 mm：上/右/下/左）
-function wordBlob(title, bodyHtml, filename, mg) {
+function wordBlob(title, bodyHtml, filename, mg, extraCss) {
   mg = mg || [20, 25, 25, 25];
   var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
     '<head><meta charset="utf-8"><title>' + title + '</title>' +
@@ -260,7 +261,7 @@ function wordBlob(title, bodyHtml, filename, mg) {
     'div.Sec1{page:Sec1}' +
     'body{font-family:標楷體,DFKai-SB,serif}' +
     'table{border-collapse:collapse}' +
-    'td{border:1px solid #000;padding:1px 3px;text-align:center;font-family:標楷體,DFKai-SB,serif}</style>' +
+    'td{border:1px solid #000;padding:1px 3px;text-align:center;font-family:標楷體,DFKai-SB,serif}' + (extraCss || '') + '</style>' +
     '</head><body><div class="Sec1">' + bodyHtml + '</div></body></html>';
   var blob = new Blob(['﻿' + html], { type: 'application/msword' });
   var a = document.createElement('a');
@@ -274,6 +275,134 @@ var DOC_COLORS = { '王': '#B8860B', '劉': '#000000', '李': '#E91E8C', '承': 
 function rocYM() {
   var p = document.getElementById('monthSel').value.split('/');
   return { y: p[0], m: p[1] };
+}
+
+// ═════════ 加值班紀錄單（Word）═════════
+// 每位醫師一頁（劉文漢不列），比照院內「加值班紀錄單」26 列格式；員工編號需秘書/管理員通行碼才帶出
+// 規則：總院值班 當天 17:00-24:00（7 時）＋隔天 00:00-08:00（8 時，跨月依日期歸屬）
+//       安康（週一～六）當天 16:00-24:00（8 時）；安康週日不記
+//       鄒美勇：平常上班日（週一～五，扣國定假日）一天一列 07:00-08:00、17:00-19:00（3 時），合計自動填；其他人合計留空
+//       加班事由：值班於「其它（填寫事由）」欄寫「值班」；鄒主任留空
+var OT_EXCLUDE = ['劉文漢'], OT_ROWS = 26;
+function otEntries(name) {
+  var out = [];
+  if (name === '鄒美勇') {
+    var hol = cfgList('國定假日');
+    for (var d = 1; d <= DIM; d++) {
+      var w = new Date(Y, M - 1, d).getDay();
+      if (w >= 1 && w <= 5 && hol.indexOf(d) < 0) out.push({ d: d, t: '07:00-08:00、17:00-19:00', h: 3, why: '' });
+    }
+    return out;
+  }
+  var cur = DATA.roster[name] || [], prev = (DATA.prevRoster || {})[name] || [];
+  function shiftOn(day) { return String(day >= 1 ? (cur[day - 1] || '') : (prev[PDIM + day - 1] || '')); }
+  for (var d2 = 1; d2 <= DIM; d2++) {
+    if (shiftOn(d2 - 1) === '值班') out.push({ d: d2, t: '00:00-08:00', h: 8, why: '值班' });   // 前一天值班（含上月最後一天）
+    if (shiftOn(d2) === '值班') out.push({ d: d2, t: '17:00-24:00', h: 7, why: '值班' });
+    if (shiftOn(d2) === '安康' && new Date(Y, M - 1, d2).getDay() !== 0) out.push({ d: d2, t: '16:00-24:00', h: 8, why: '值班' });
+  }
+  return out;
+}
+// ── 以院內原表單（ot-template.js 內的 加值班紀錄單.docx）逐格填入，產出真正的 .docx ──
+// 原表單每個儲存格恰有一個 <w:t>，資料列為表格第 4～29 列、最後一列為合計
+function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function otSetCell(rowXml, idx, text) {          // 把該列第 idx 個 <w:t> 的內容換成 text
+  var n = -1;
+  return rowXml.replace(/(<w:t xml:space="preserve">)([^<]*)(<\/w:t>)/g, function (m, a, old, c) {
+    n++; return n === idx ? a + xmlEsc(text) + c : m;
+  });
+}
+function otTwoLineCell(rowXml, idx, l1, l2) {    // 兩段時間：同格兩行、8pt、固定行距，避免被固定列高裁切
+  var n = -1;
+  return rowXml.replace(/<w:p><w:pPr><w:jc w:val="center"\/><\/w:pPr><w:r><w:rPr>(<w:rFonts [^>]*\/>)<w:sz w:val="22"\/><w:szCs w:val="22"\/><\/w:rPr><w:t xml:space="preserve">[^<]*<\/w:t><\/w:r><\/w:p>/g, function (m, fonts) {
+    n++;
+    if (n !== idx) return m;
+    var rpr = '<w:rPr>' + fonts + '<w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>';
+    return '<w:p><w:pPr><w:spacing w:line="170" w:lineRule="exact"/><w:jc w:val="center"/></w:pPr>' +
+      '<w:r>' + rpr + '<w:t xml:space="preserve">' + xmlEsc(l1) + '</w:t></w:r>' +
+      '<w:r>' + rpr + '<w:br/><w:t xml:space="preserve">' + xmlEsc(l2) + '</w:t></w:r></w:p>';
+  });
+}
+function otPageXml(tplPage, name, empno, entries, total, ym, firstPage) {
+  var mm = parseInt(ym.m, 10);
+  var x = tplPage
+    .replace('OVERTIME　　　＿＿＿月', 'OVERTIME　　　＿' + mm + '＿月')
+    .replace('>員工編號：<', '>員工編號：' + xmlEsc(empno || '') + '<')
+    .replace('>\t姓名：<', '>\t姓名：' + xmlEsc(name) + '<')
+    .replace('>\t單位：　　　　　　部<', '>\t單位：麻醉部<')
+    .replace('>\t年<', '>\t' + ym.y + ' 年<')
+    // 原表單 26 列＋合計＋簽核列在一頁放不下（表頭會折成三行）→ 列高 430→390 twip（7.6→6.9mm）、簽核列前距縮小，確保一人一頁
+    .replace(/<w:trHeight w:val="430"/g, '<w:trHeight w:val="390"')
+    .replace('<w:spacing w:before="360"/>', '<w:spacing w:before="160"/>');
+  var r = -1;
+  x = x.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, function (row) {
+    r++;
+    if (r >= 3 && r < 3 + OT_ROWS) {              // 資料列：0 項次 1 日期 2 起迄 3 總時數 4 簽名 5-8 勾選 9 其它 10 假日 11 備註
+      var e = entries[r - 3];
+      if (!e) return row;
+      var segs = e.t.split('、');
+      row = otSetCell(row, 1, mm + '/' + e.d);
+      row = otSetCell(row, 3, e.h + ' 時');
+      if (e.why) row = otSetCell(row, 9, e.why);
+      // 起迄時間最後處理：兩行版會改掉該格的 <w:p> 結構（第 3 個置中段落 = 索引 2）
+      return segs.length > 1 ? otTwoLineCell(row, 2, segs[0], segs.slice(1).join('、')) : otSetCell(row, 2, e.t);
+    }
+    if (r === 3 + OT_ROWS && total != null) return otSetCell(row, 1, total + ' 時');   // 合計列
+    return row;
+  });
+  // 第 2 頁起：首段加「段落前分頁」（不多插空段落，避免把頁尾擠到下一頁）
+  if (!firstPage) x = x.replace('<w:p><w:pPr><w:jc w:val="center"/></w:pPr>', '<w:p><w:pPr><w:pageBreakBefore/><w:jc w:val="center"/></w:pPr>');
+  return x;
+}
+function otBuildDocumentXml(tplDocXml, emp, ym) {
+  var m = tplDocXml.match(/^([\s\S]*<w:body>)([\s\S]*)(<w:sectPr[\s\S]*<\/w:sectPr>)([\s\S]*)$/);
+  if (!m) throw new Error('表單範本格式不符');
+  var pages = [];
+  docsForWord().filter(function (d) { return OT_EXCLUDE.indexOf(d.name) < 0; }).forEach(function (d) {
+    var es = otEntries(d.name);
+    var total = (d.name === '鄒美勇') ? es.reduce(function (a, e) { return a + e.h; }, 0) : null;   // 其他人合計留空
+    for (var i = 0; i < Math.max(es.length, 1); i += OT_ROWS) {   // 超過 26 列自動續頁；合計只寫在最後一頁
+      var last = i + OT_ROWS >= es.length;
+      pages.push(otPageXml(m[2], d.name, emp[d.name], es.slice(i, i + OT_ROWS), last ? total : null, ym, pages.length === 0));
+    }
+  });
+  return m[1] + pages.join('') + m[3] + m[4];
+}
+function loadScriptOnce(src, test, cb, onErr) {
+  if (test()) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = src; s.onload = cb; s.onerror = onErr;
+  document.body.appendChild(s);
+}
+function dlOtDoc() {
+  if (!DATA) return;
+  var pass = cacheGet('otPass') || window.prompt('下載加值班紀錄單需要通行碼（秘書或管理員）：');
+  if (!pass) return;
+  var st = document.getElementById('status');
+  function fail(msg) { st.textContent = ''; alert(msg); }
+  st.textContent = '產生加值班紀錄單…';
+  jsonp({ action: 'empNo', passcode: pass }, function (res) {
+    if (!res || !res.ok) { cacheSet('otPass', ''); fail((res && res.error) || '讀取失敗，請再試一次'); return; }
+    cacheSet('otPass', pass);
+    var emp = {}; res.list.forEach(function (x) { emp[x.name] = x.empno; });
+    var ym = rocYM();
+    loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', function () { return typeof JSZip !== 'undefined'; }, function () {
+      loadScriptOnce('ot-template.js?v=1', function () { return !!window.OT_TEMPLATE_B64; }, function () {
+        JSZip.loadAsync(window.OT_TEMPLATE_B64, { base64: true }).then(function (zip) {
+          return zip.file('word/document.xml').async('string').then(function (xml) {
+            zip.file('word/document.xml', otBuildDocumentXml(xml, emp, ym));
+            return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+          });
+        }).then(function (blob) {
+          st.textContent = '';
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = ym.y + '年' + ym.m + '月份麻醉部加值班紀錄單.docx';
+          a.click();
+        }).catch(function (e) { fail('產生失敗：' + (e && e.message || e)); });
+      }, function () { fail('表單範本載入失敗'); });
+    }, function () { fail('JSZip 載入失敗，請確認網路後再試'); });
+  }, function () { fail('連線失敗，請稍後再試'); });
 }
 
 // 聖母班表（Word）：116/01 起列 日期／星期／聖母白班／聖母on call夜班；之前月份列 日期／星期／聖母醫師
