@@ -298,6 +298,8 @@ function otEntries(name) {
   function shiftOn(day) { return String(day >= 1 ? (cur[day - 1] || '') : (prev[PDIM + day - 1] || '')); }
   for (var d2 = 1; d2 <= DIM; d2++) {
     if (shiftOn(d2 - 1) === '值班') out.push({ d: d2, t: '00:00-08:00', h: 8, why: '值班' });   // 前一天值班（含上月最後一天）
+    // 李易軒：當天班別在總院（白班／鏡檢／二線班）時加記 17:00-18:00；值班日已含 17:00 起故不重複
+    if (name === '李易軒' && ['白班', '鏡檢', '二線班'].indexOf(shiftOn(d2)) >= 0) out.push({ d: d2, t: '17:00-18:00', h: 1, why: '' });
     if (shiftOn(d2) === '值班') out.push({ d: d2, t: '17:00-24:00', h: 7, why: '值班' });
     if (shiftOn(d2) === '安康' && new Date(Y, M - 1, d2).getDay() !== 0) out.push({ d: d2, t: '16:00-24:00', h: 8, why: '值班' });
   }
