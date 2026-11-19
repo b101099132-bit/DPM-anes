@@ -492,7 +492,7 @@ function eligible(name, d, s, c) {
   if (s === ST_DAY || s === ST_NIGHT) return !cur || isStVal(cur);   // 兩格制規則未定：只看當天是否已有其他班
   if (cur && cur !== s) return false;
   if (s === '值班' && (abbr === '李' || abbr === '劉')) return false;
-  if (s === '聖母' && ['李', '王', '昀', '劉'].indexOf(abbr) >= 0) return false;
+  if (s === '聖母' && ['李', '又', '昀', '劉'].indexOf(abbr) >= 0) return false;
   if ((s === '白班' || s === '二線班') && abbr === '劉') return false;
   if (abbr === '劉') {
     if (['鏡檢', '安康'].indexOf(s) < 0) return false;
@@ -692,7 +692,7 @@ function collectViolations(c) {
       seen[v] = abbr;
       if (req.indexOf(v) < 0 && v !== '二線班') out.push({ n: n, d: d, msg: d + '日不應排「' + v + '」（' + abbr + '）' });
       if (v === '值班' && (abbr === '李' || abbr === '劉')) out.push({ n: n, d: d, msg: abbr + '不可值班（' + d + '日）' });
-      if (v === '聖母' && ['李', '王', '昀', '劉'].indexOf(abbr) >= 0) out.push({ n: n, d: d, msg: abbr + '不可聖母（' + d + '日）' });
+      if (v === '聖母' && ['李', '又', '昀', '劉'].indexOf(abbr) >= 0) out.push({ n: n, d: d, msg: abbr + '不可聖母（' + d + '日）' });
       if (abbr === '劉' && ['鏡檢', '安康'].indexOf(v) < 0) out.push({ n: n, d: d, msg: '劉只能鏡檢/安康（' + d + '日排' + v + '）' });
       var yv = (d === 1) ? prevCell(n, 1) : GRID[n][d - 2];
       if (yv === '值班') {
