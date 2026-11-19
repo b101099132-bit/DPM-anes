@@ -52,6 +52,7 @@
     <div class="card">
       <h2><span id="whoTitle"></span>：點選需求類別後，在月曆點日期（再點一次取消）</h2>
       <div class="cats" id="cats"></div>
+      <div class="hint" id="st2hint" style="display:none;margin-bottom:8px">116 年 1 月起聖母分「白班」與「on call 夜班」：同一天兩個都點，就是要整天（白班＋夜班）。</div>
       <div class="cal" id="cal"></div>
       <div class="hint" style="margin-top:8px">同一天只能一種需求；改選其他類別再點該日期即可覆蓋。</div>
     </div>
@@ -69,11 +70,31 @@
 <script src="config.js?v=7"></script>
 <script src="common.js?v=7"></script>
 <script>
-var CATS = [
+// 115/12 以前：休假／羅東聖母；116/01（2027/1）起聖母拆成「聖母白班」「聖母on call夜班」兩格
+var CATS_OLD = [
   { key: '休假',     color: '#8e44ad' },
   { key: '羅東聖母', color: '#7f8c8d' }
 ];
+var CATS_ST2 = [
+  { key: '休假',     color: '#8e44ad' },
+  { key: '聖母白班', color: '#95a5a6', label: '聖母白班' },
+  { key: '聖母夜班', color: '#5d6d7e', label: '聖母on call夜班' }
+];
+var ST_DAY = '聖母白班', ST_NIGHT = '聖母夜班', ST_BOTH = '聖母全日';   // 同一天白班＋夜班 = 聖母全日
+var CATS = CATS_OLD;
 var curCat = 0, dayCat = {}, DIM = 0, CY = 0, CM = 0;
+function isSt2Ym(y, m) { return y * 100 + m >= 202701; }
+function monthYm() { var p = document.getElementById('month').value.split('-'); return [parseInt(p[0], 10), parseInt(p[1], 10)]; }
+function renderCats() {
+  var ym = monthYm();
+  CATS = isSt2Ym(ym[0], ym[1]) ? CATS_ST2 : CATS_OLD;
+  curCat = 0;
+  document.getElementById('cats').innerHTML = CATS.map(function (c, i) {
+    return '<span class="cat' + (i === 0 ? ' sel' : '') + '" style="background:' + c.color + '" onclick="pickCat(' + i + ')">' + (c.label || c.key) + '</span>';
+  }).join('');
+  var h = document.getElementById('st2hint');
+  if (h) h.style.display = isSt2Ym(ym[0], ym[1]) ? 'block' : 'none';
+}
 var DOCS = [], OTHERS = {}; // OTHERS[day] = {off:[簡稱], st:[簡稱]}
 
 init();
@@ -104,11 +125,7 @@ function init() {
   var d = new Date();
   d.setDate(1); d.setMonth(d.getMonth() + 1); // 預設下個月
   document.getElementById('month').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
-  var html = '';
-  CATS.forEach(function (c, i) {
-    html += '<span class="cat' + (i === 0 ? ' sel' : '') + '" style="background:' + c.color + '" onclick="pickCat(' + i + ')">' + c.key + '</span>';
-  });
-  document.getElementById('cats').innerHTML = html;
+  renderCats();
 }
 
 function pickCat(i) {
@@ -132,15 +149,19 @@ function loadMine() {
     msg.innerHTML = '<span class="ok">身分確認成功</span>';
     document.getElementById('editArea').style.display = 'block';
     document.getElementById('whoTitle').textContent = name + '｜' + rocM() + ' 需求';
+    renderCats();
     dayCat = {};
     document.getElementById('note').value = '';
     if (res.row) {
       CATS.forEach(function (c) {
-        var i = res.headers.indexOf(c.key === '休假' ? '休假' : c.key);
+        var i = res.headers.indexOf(c.key);
+        if (i < 0) return;
         var v = String(res.row[i] || '');
         v.split(',').forEach(function (s) {
           var n = parseInt(s, 10);
-          if (n >= 1 && n <= 31) dayCat[n] = c.key;
+          if (!(n >= 1 && n <= 31)) return;
+          if ((c.key === ST_DAY && dayCat[n] === ST_NIGHT) || (c.key === ST_NIGHT && dayCat[n] === ST_DAY)) dayCat[n] = ST_BOTH;
+          else dayCat[n] = c.key;
         });
       });
       document.getElementById('note').value = res.row[res.headers.indexOf('備註')] || '';
@@ -171,6 +192,12 @@ function loadOthers(name, pin) {
         var n = parseInt(s, 10);
         if (n >= 1 && n <= 31) { (OTHERS[n] = OTHERS[n] || { off: [], st: [] }).st.push(ab); }
       });
+      [['sd', 'sd'], ['sn', 'sn']].forEach(function (k) {
+        String(r[k[0]] || '').split(/[,，]/).forEach(function (s) {
+          var n = parseInt(s, 10);
+          if (n >= 1 && n <= 31) { var o = (OTHERS[n] = OTHERS[n] || { off: [], st: [] }); (o[k[1]] = o[k[1]] || []).push(ab); }
+        });
+      });
     });
     paintOthers();
   });
@@ -185,6 +212,8 @@ function paintOthers() {
     if (o) {
       if (o.off.length) txt += '休:' + o.off.join('');
       if (o.st.length) txt += (txt ? ' ' : '') + '聖:' + o.st.join('');
+      if (o.sd && o.sd.length) txt += (txt ? ' ' : '') + '聖白:' + o.sd.join('');
+      if (o.sn && o.sn.length) txt += (txt ? ' ' : '') + '聖夜:' + o.sn.join('');
     }
     el.textContent = txt;
   }
@@ -213,7 +242,14 @@ function tapDay(d) {
     var w = new Date(CY, CM - 1, d).getDay();
     if (w !== 1 && w !== 2) { alert('羅東聖母只有星期一、星期二，請選週一或週二的日期'); return; }
   }
-  if (dayCat[d] === k) delete dayCat[d];
+  var cur = dayCat[d];
+  if (k === ST_DAY || k === ST_NIGHT) {
+    var other = (k === ST_DAY) ? ST_NIGHT : ST_DAY;
+    if (cur === ST_BOTH) dayCat[d] = other;          // 全日 → 拿掉這一半
+    else if (cur === other) dayCat[d] = ST_BOTH;     // 已有另一半 → 合併為全日
+    else if (cur === k) delete dayCat[d];
+    else dayCat[d] = k;
+  } else if (cur === k) delete dayCat[d];
   else dayCat[d] = k;
   paintDay(d);
 }
@@ -223,9 +259,11 @@ function paintDay(d) {
   if (!tag) return;
   var k = dayCat[d];
   if (!k) { tag.textContent = ''; tag.style.background = ''; return; }
+  if (k === ST_BOTH) { tag.textContent = '聖全日'; tag.style.background = '#34495e'; return; }
   var c = CATS.filter(function (x) { return x.key === k; })[0];
-  tag.textContent = (k === '休假') ? '休' : k;
-  tag.style.background = c.color;
+  var SHORT = { '休假': '休', '聖母白班': '聖白', '聖母夜班': '聖夜' };
+  tag.textContent = SHORT[k] || k;
+  tag.style.background = c ? c.color : '#999';
 }
 
 function submitReq() {
@@ -234,7 +272,9 @@ function submitReq() {
   var data = { '備註': document.getElementById('note').value.trim() };
   CATS.forEach(function (c) {
     var days = [];
-    for (var d = 1; d <= DIM; d++) if (dayCat[d] === c.key) days.push(d);
+    for (var d = 1; d <= DIM; d++) {
+      if (dayCat[d] === c.key || (dayCat[d] === ST_BOTH && (c.key === ST_DAY || c.key === ST_NIGHT))) days.push(d);
+    }
     data[c.key] = days.join(',');
   });
   var btn = document.getElementById('submitBtn');

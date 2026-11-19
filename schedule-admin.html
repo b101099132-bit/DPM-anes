@@ -303,11 +303,14 @@ function fmtTime(v) {
 }
 
 function renderRequests() {
-  var html = '<tr><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th><th>最後填報時間</th></tr>';
+  // 116/01 起聖母分白班／on call夜班兩欄
+  var cols = ST2 ? ['休假', '聖母白班', '聖母夜班', '備註'] : ['休假', '羅東聖母', '備註'];
+  var html = '<tr><th>醫師</th>' + (ST2 ? '<th>休假</th><th>聖母白班</th><th>聖母on call夜班</th>' : '<th>休假</th><th>聖母</th>') +
+    '<th>備註</th><th>最後填報時間</th></tr>';
   WB.doctors.forEach(function (d) {
     var r = reqOf(d.name);
     html += '<tr><td>' + d.name + '</td>' +
-      ['休假', '羅東聖母', '備註'].map(function (h) {
+      cols.map(function (h) {
         return '<td>' + (r ? String(r[h] || '') : '') + '</td>';
       }).join('') + '<td>' + (r ? fmtTime(r['填報時間']) : '') + '</td></tr>';
   });
@@ -318,11 +321,14 @@ function renderLogs() {
   var logs = (WB.reqLogs || []).slice().sort(function (a, b) {
     return String(a[0]) < String(b[0]) ? 1 : -1; // 新→舊
   });
-  var html = '<tr><th>送出時間</th><th>醫師</th><th>休假</th><th>聖母</th><th>備註</th></tr>';
+  var html = '<tr><th>送出時間</th><th>醫師</th><th>休假</th>' +
+    (ST2 ? '<th>聖母白班</th><th>聖母on call夜班</th>' : '<th>聖母</th>') + '<th>備註</th></tr>';
   logs.forEach(function (r) {
-    html += '<tr><td>' + fmtTime(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td><td>' + (r[4] || '') + '</td><td>' + (r[5] || '') + '</td></tr>';
+    html += '<tr><td>' + fmtTime(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td>' +
+      (ST2 ? '<td>' + (r[6] || '') + '</td><td>' + (r[7] || '') + '</td>' : '<td>' + (r[4] || '') + '</td>') +
+      '<td>' + (r[5] || '') + '</td></tr>';
   });
-  document.getElementById('logTable').innerHTML = html + (logs.length ? '' : '<tr><td colspan="5">本月尚無填報紀錄</td></tr>');
+  document.getElementById('logTable').innerHTML = html + (logs.length ? '' : '<tr><td colspan="' + (ST2 ? 6 : 5) + '">本月尚無填報紀錄</td></tr>');
 }
 
 function dow(d) { return new Date(Y, M - 1, d).getDay(); } // 0=日
