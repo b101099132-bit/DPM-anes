@@ -77,12 +77,16 @@
 // 115/12 以前：休假／羅東聖母；116/01（2027/1）起聖母拆成「聖母白班」「聖母on call夜班」兩格
 var CATS_OLD = [
   { key: '休假',     color: '#8e44ad' },
-  { key: '羅東聖母', color: '#7f8c8d' }
+  { key: '羅東聖母', color: '#7f8c8d' },
+  { key: '不值班',   color: '#16a085', label: '不值班可上班' },
+  { key: '安康',     color: '#d35400', label: '安康班' }
 ];
 var CATS_ST2 = [
   { key: '休假',     color: '#8e44ad' },
   { key: '聖母白班', color: '#95a5a6', label: '聖母白班' },
-  { key: '聖母夜班', color: '#5d6d7e', label: '聖母on call夜班' }
+  { key: '聖母夜班', color: '#5d6d7e', label: '聖母on call夜班' },
+  { key: '不值班',   color: '#16a085', label: '不值班可上班' },
+  { key: '安康',     color: '#d35400', label: '安康班' }
 ];
 var ST_DAY = '聖母白班', ST_NIGHT = '聖母夜班', ST_BOTH = '聖母全日';   // 同一天白班＋夜班 = 聖母全日
 var CATS = CATS_OLD;
@@ -211,7 +215,7 @@ function loadOthers(name, pin) {
         var n = parseInt(s, 10);
         if (n >= 1 && n <= 31) { (OTHERS[n] = OTHERS[n] || { off: [], st: [] }).st.push(ab); }
       });
-      [['sd', 'sd'], ['sn', 'sn']].forEach(function (k) {
+      [['sd', 'sd'], ['sn', 'sn'], ['ak', 'ak']].forEach(function (k) {
         String(r[k[0]] || '').split(/[,，]/).forEach(function (s) {
           var n = parseInt(s, 10);
           if (n >= 1 && n <= 31) { var o = (OTHERS[n] = OTHERS[n] || { off: [], st: [] }); (o[k[1]] = o[k[1]] || []).push(ab); }
@@ -233,6 +237,7 @@ function paintOthers() {
       if (o.st.length) txt += (txt ? ' ' : '') + '聖:' + o.st.join('');
       if (o.sd && o.sd.length) txt += (txt ? ' ' : '') + '聖白:' + o.sd.join('');
       if (o.sn && o.sn.length) txt += (txt ? ' ' : '') + '聖夜:' + o.sn.join('');
+      if (o.ak && o.ak.length) txt += (txt ? ' ' : '') + '安:' + o.ak.join('');
     }
     el.textContent = txt;
   }
@@ -280,7 +285,7 @@ function paintDay(d) {
   if (!k) { tag.textContent = ''; tag.style.background = ''; return; }
   if (k === ST_BOTH) { tag.textContent = '聖全日'; tag.style.background = '#34495e'; return; }
   var c = CATS.filter(function (x) { return x.key === k; })[0];
-  var SHORT = { '休假': '休', '聖母白班': '聖白', '聖母夜班': '聖夜' };
+  var SHORT = { '休假': '休', '聖母白班': '聖白', '聖母夜班': '聖夜', '不值班': '不值', '安康': '安康' };
   tag.textContent = SHORT[k] || k;
   tag.style.background = c ? c.color : '#999';
 }
