@@ -16,6 +16,7 @@
   button.warn { background: #b34700; }
   button.gray { background: #7a8a99; }
   button:disabled { background: #9ab; }
+  .mbtn { padding: 4px 10px; min-width: 0; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
   .grid-scroll { overflow-x: auto; }
   table.sched { border-collapse: collapse; font-size: .78rem; white-space: nowrap; }
@@ -65,7 +66,9 @@
       <input type="password" id="pin" placeholder="個人碼" style="width:100px">
       <span class="hint">或</span>
       <input type="password" id="adminPass" placeholder="管理員通行碼" style="width:140px">
+      <button type="button" class="gray mbtn" onclick="shiftMonth(-1)" title="上個月">◀</button>
       <input type="month" id="month">
+      <button type="button" class="gray mbtn" onclick="shiftMonth(1)" title="下個月">▶</button>
       <button onclick="login()">登入</button>
     </div>
     <div id="loginMsg" class="hint"></div>
@@ -177,6 +180,21 @@ function authParams() {
   if (ap) return { passcode: ap };
   return { name: document.getElementById('docSel').value, pin: document.getElementById('pin').value.trim() };
 }
+
+// 月份快捷鍵：◀ ▶ 切換上/下個月；已登入則自動重新載入該月
+function shiftMonth(n) {
+  var el = document.getElementById('month');
+  var p = (el.value || '').split('-');
+  var d = p.length === 2 ? new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1 + n, 1) : new Date();
+  var v = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  if (document.getElementById('work').style.display === 'block') {
+    if (!confirm('切換到 ' + v.replace('-', '/') + ' 會重新載入，尚未儲存／送出的變更將遺失，確定？')) return;
+    el.value = v; login();
+  } else {
+    el.value = v;
+  }
+}
+
 function rocM() { return isoToRoc(document.getElementById('month').value); }
 
 function login() {
