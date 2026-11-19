@@ -74,7 +74,7 @@
   <div id="work" style="display:none">
     <div class="card">
       <h2>月設定 <span id="pubBadge"></span></h2>
-      <div class="row"><label style="width:150px">國定假日（日,逗號）</label><input id="cfg_holiday" style="width:280px"></div>
+      <div class="row"><label style="width:150px">國定假日（日,逗號）</label><input id="cfg_holiday" style="width:280px"> <span id="holHint" style="font-size:12px;color:#888"></span></div>
       <div class="row"><label style="width:150px">部長開會日（李代二線）</label><input id="cfg_meet" style="width:280px"></div>
       <div class="row"><label style="width:150px">聖母不排週（週一日期）</label><input id="cfg_nost" style="width:280px"></div>
       <div class="row"><label style="width:150px">二線不排日（三/五）</label><input id="cfg_no2" style="width:280px"></div>
@@ -236,8 +236,30 @@ function cfgVal(h) {
   if (!WB.cfg) return '';
   return String(WB.cfg[WB.cfgHeaders.indexOf(h)] || '');
 }
+// 院方行事曆（人資室公告）：OFF＝平日遇國定假日放假（行事曆桃紅色）；WE＝國定假日遇週末（綠色，照常休假、不影響排班）
+// 未列出的日子＝醫院照常上班（例：初一初二遇假日、228 遇假日的「補假」為補休時數，不停診）
+var HOSP_CAL = {
+  '116/01': { off: '1' },
+  '116/02': { off: '4,5,8', we: '6,7,28' },
+  '116/04': { off: '5', we: '4' },
+  '116/05': { we: '1' },
+  '116/06': { off: '9' },
+  '116/09': { off: '15,28' },
+  '116/10': { off: '25', we: '10' },
+  '116/12': { we: '25' }
+};
+var HOSP_CAL_YEARS = ['116'];   // 已載入行事曆的年度（其他年度不自動帶入）
 function loadCfgToForm() {
-  document.getElementById('cfg_holiday').value = cfgVal('國定假日');
+  var hol = cfgVal('國定假日'), m = rocM(), cal = HOSP_CAL[m] || {}, hint = '';
+  if (HOSP_CAL_YEARS.indexOf(m.split('/')[0]) >= 0) {
+    if (!hol && cal.off) { hol = cal.off; hint = '已依院方行事曆帶入，儲存後生效。'; }
+    hint += cal.off ? '院方行事曆平日休假：' + cal.off : '院方行事曆：本月無平日休假';
+    if (cal.we) hint += '；遇週末：' + cal.we + '（不影響排班）';
+    if (cfgVal('國定假日') && parseDays(cfgVal('國定假日')).join(',') !== parseDays(cal.off || '').join(','))
+      hint += ' ⚠ 與目前設定不同';
+  }
+  document.getElementById('cfg_holiday').value = hol;
+  document.getElementById('holHint').textContent = hint;
   document.getElementById('cfg_meet').value = cfgVal('部長開會日');
   document.getElementById('cfg_nost').value = cfgVal('聖母不排週');
   document.getElementById('cfg_no2').value = cfgVal('二線不排日');
