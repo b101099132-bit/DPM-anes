@@ -420,7 +420,10 @@ function otBuildDocumentXml(tplDocXml, emp, ym) {
   var m = tplDocXml.match(/^([\s\S]*<w:body>)([\s\S]*)(<w:sectPr[\s\S]*<\/w:sectPr>)([\s\S]*)$/);
   if (!m) throw new Error('表單範本格式不符');
   var pages = [];
-  docsForWord().filter(function (d) { return OT_EXCLUDE.indexOf(d.name) < 0; }).forEach(function (d) {
+  docsForWord().filter(function (d) {
+    // 排除劉；該月班表沒有這位醫師（如 116/01 才到職的王奕晴）就不出空白頁
+    return OT_EXCLUDE.indexOf(d.name) < 0 && (d.name === '鄒美勇' || DATA.roster[d.name]);
+  }).forEach(function (d) {
     var es = otEntries(d.name);
     var total = (d.name === '鄒美勇') ? es.reduce(function (a, e) { return a + e.h; }, 0) : null;   // 其他人合計留空
     for (var i = 0; i < Math.max(es.length, 1); i += OT_ROWS) {   // 超過 26 列自動續頁；合計只寫在最後一頁
