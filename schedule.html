@@ -44,6 +44,30 @@
   <div class="card">
     <div class="grid-scroll" id="master"></div>
   </div>
+
+  <div class="card" id="icsCard">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b style="color:#1a3c5e">📅 我的行事曆</b>
+      <select id="icsDoc"><option>載入中…</option></select>
+      <input type="password" id="icsPin" placeholder="個人碼" autocomplete="off" style="width:100px;padding:7px;border:1px solid #bcd;border-radius:6px">
+      <button onclick="icsGetLink()">取得我的行事曆</button>
+      <span id="icsMsg" style="color:#789"></span>
+    </div>
+    <div id="icsOut" style="display:none;margin-top:10px;line-height:1.9">
+      <div>
+        <a id="icsGoogle" target="_blank" rel="noopener"><button type="button">加入 Google 日曆（訂閱）</button></a>
+        <a id="icsWebcal"><button type="button" style="background:#555">iPhone／Outlook 訂閱</button></a>
+        <a id="icsDl"><button type="button" style="background:#7a8a99">下載 .ics 檔</button></a>
+        <button type="button" style="background:#7a8a99" onclick="icsCopy()">複製訂閱網址</button>
+      </div>
+      <input id="icsUrl" readonly style="width:100%;max-width:760px;padding:6px;border:1px solid #ccd;border-radius:6px;font-size:.8rem;color:#555">
+      <div style="font-size:.85rem;color:#678">
+        含所有已發布月份。訂閱後換班會自動更新（Google 日曆約 6～24 小時同步一次）。<br>
+        若 Google 日曆顯示無法加入，請改用「下載 .ics 檔」後在 Google 日曆「設定 → 匯入」，換班後需重新匯入。<br>
+        訂閱網址等同你的個人班表，請勿轉傳。
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -54,7 +78,43 @@ var DATA = null, DIM = 0, Y = 0, M = 0, PDIM = 0, PY = 0, PM = 0;
 
 init();
 
+// ===== 個人行事曆（訂閱／下載）=====
+function icsInitDocs() {
+  jsonp({ action: 'doctorList' }, function (res) {
+    var sel = document.getElementById('icsDoc');
+    sel.innerHTML = (res && res.ok)
+      ? res.doctors.map(function (d) { return '<option value="' + d.name + '">' + d.name + '</option>'; }).join('')
+      : '<option>載入失敗</option>';
+    try { var last = localStorage.getItem('icsDoc'); if (last) sel.value = last; } catch (e) {}
+  });
+}
+function icsGetLink() {
+  var name = document.getElementById('icsDoc').value, pin = document.getElementById('icsPin').value.trim();
+  var msg = document.getElementById('icsMsg');
+  if (!pin) { msg.innerHTML = '<span class="err">請輸入個人碼</span>'; return; }
+  msg.textContent = '產生中…';
+  jsonp({ action: 'icsLink', name: name, pin: pin }, function (res) {
+    if (!res || !res.ok) { msg.innerHTML = '<span class="err">' + ((res && res.error) || '失敗') + '</span>'; return; }
+    try { localStorage.setItem('icsDoc', name); } catch (e) {}
+    var url = API_URL + '?action=ics&t=' + res.token;
+    var webcal = url.replace(/^https:/, 'webcal:');
+    document.getElementById('icsUrl').value = url;
+    document.getElementById('icsGoogle').href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(webcal);
+    document.getElementById('icsWebcal').href = webcal;
+    document.getElementById('icsDl').href = url + '&dl=1';
+    document.getElementById('icsOut').style.display = 'block';
+    msg.textContent = '';
+  });
+}
+function icsCopy() {
+  var el = document.getElementById('icsUrl');
+  el.select();
+  try { navigator.clipboard.writeText(el.value); } catch (e) { document.execCommand('copy'); }
+  document.getElementById('icsMsg').textContent = '已複製';
+}
+
 function init() {
+  icsInitDocs();
   document.getElementById('monthSel').onchange = function () { load(this.value); };
   // 先用本機快取立即顯示（若有），同時向後端要最新資料
   var last = cacheGet('schedLastMonth');
