@@ -23,6 +23,9 @@
   table.sched th, table.sched td { border: 1px solid #cbd6e2; padding: 2px 3px; text-align: center; min-width: 34px; }
   table.sched th { background: #eef4fa; color: #1a3c5e; }
   table.sched td.doc { font-weight: bold; background: #f7fafd; min-width: 64px; }
+  /* 凍結第一欄（醫師姓名／班別）：左右捲動時固定在左側 */
+  table.sched tr > :first-child { position: sticky; left: 0; z-index: 2; box-shadow: inset -2px 0 0 #9fb3c8; }
+  table.sched tr > th:first-child { background: #eef4fa; }
   table.sched td.cell { cursor: pointer; height: 26px; }
   table.sched th.we { background: #ffe9d6; }
   table.sched td.viol { outline: 2px solid #e74c3c; outline-offset: -2px; }
