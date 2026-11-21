@@ -19,7 +19,13 @@
   table.ns td.we { background: #fff6ee; }
   table.ns td.nm { font-weight: bold; min-width: 74px; }
   table.ns tr > :first-child { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: inset -2px 0 0 #555; }
-  table.ns tr.me td { background: #fffbd1 !important; }
+  table.ns tr.me td.nm { background: #fff3a8 !important; }
+  table.ns tr.me td { box-shadow: inset 0 2px 0 #e0b800, inset 0 -2px 0 #e0b800; }
+  /* 班別底色（與工作台一致） */
+  .s-W { background: #e8f1fb; } .s-E { background: #dfe3ff; } .s-N { background: #3d4a5c; color: #fff; }
+  .s-OT { background: #d7f5e4; } .s-H2 { background: #ffe0e8; } .s-HW { background: #ffd9b0; }
+  .s-FX { background: #f1f4f7; } .s-OFF { color: #aaa; }
+  .legend span { display: inline-block; padding: 2px 8px; margin: 2px 4px 2px 0; border-radius: 4px; border: 1px solid #ccd; font-size: .8rem; }
   .cap { text-align: center; font-weight: bold; font-size: 1.05rem; margin-bottom: 6px; }
   .hint { color: #789; font-size: .82rem; }
   .err { color: #c0392b; }
@@ -37,7 +43,7 @@
 </div>
 <div class="card">
   <div class="grid-scroll"><div id="sheet" style="display:inline-block;padding:6px;background:#fff"></div></div>
-  <div class="hint" style="margin-top:6px">白班序號 1～11、A／B／8"-4"（8半）加班線、3-11 小夜、23-7 大夜、週六「1」主值、OFF# 假日二線、P＝恢復室。</div>
+  <div class="legend" style="margin-top:6px"><span class="s-W">白班 1～11</span><span class="s-OT">加班線 A／B／8"-4"</span><span class="s-E">小夜 3-11</span><span class="s-N">大夜 23-7</span><span class="s-HW">假日白班（週六 1 主值／2、8-4）</span><span class="s-H2">假日二線 OFF#</span><span class="s-FX">8-4／8-4P（P＝恢復室）</span><span class="s-OFF">OFF</span></div>
 </div>
 <div class="card">
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -98,8 +104,9 @@ function render() {
     var label = n.cat === 'POR' ? 'POR' + n.name : (++i) + '. ' + n.name;
     h += '<tr data-n="' + n.name + '"><td class="nm">' + label + '</td>';
     for (var d3 = 1; d3 <= DIM; d3++) {
-      var w3 = new Date(Y, M - 1, d3).getDay();
-      h += '<td class="' + (w3 === 0 || w3 === 6 ? 'we' : '') + '">' + String(r[d3 - 1] || '').replace(/</g, '&lt;') + '</td>';
+      var w3 = new Date(Y, M - 1, d3).getDay(), v = String(r[d3 - 1] || '');
+      var sc = shiftCls(v, w3 === 0 || w3 === 6, n.cat);
+      h += '<td class="' + (sc || (w3 === 0 || w3 === 6 ? 'we' : '')) + '">' + v.replace(/</g, '&lt;') + '</td>';
     }
     h += '</tr>';
   });
@@ -115,6 +122,20 @@ function render() {
   h += '</tr></table>';
   document.getElementById('sheet').innerHTML = h;
   markMe();
+}
+// 班別 → 底色 class（週末判斷 1／2／8-4 是否為假日白班；國定假日的 8-4 只有輪值者才算假日白班）
+function shiftCls(v, we, cat) {
+  if (!v) return '';
+  if (v === 'OFF') return 's-OFF';
+  if (v === 'OFF#') return 's-H2';
+  if (v === '3-11') return 's-E';
+  if (v === '23-7') return 's-N';
+  if (v === 'A' || v === 'B') return 's-OT';
+  if (v === '8"-4"') return cat === '輪值' ? 's-OT' : 's-FX';
+  if (we && (v === '1' || v === '2' || v === '8-4')) return 's-HW';
+  if (/^\d+$/.test(v)) return 's-W';
+  if (v === '8-4' || v === '8-4P') return 's-FX';
+  return '';
 }
 function markMe() {
   var me = document.getElementById('meSel').value;
