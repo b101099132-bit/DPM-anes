@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>護理師班表查詢 | 耕莘醫院麻醉部</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 16px; }
+  h1 { font-size: 1.2rem; color: #1a3c5e; margin: 0 0 10px; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 14px 16px; margin-bottom: 14px; }
+  select, input { padding: 7px; border: 1px solid #bcd; border-radius: 6px; font-size: .95rem; }
+  button { padding: 8px 14px; font-size: .92rem; border: 0; border-radius: 7px; background: #1a5e9e; color: #fff; cursor: pointer; }
+  .grid-scroll { overflow-x: auto; }
+  table.ns { border-collapse: collapse; font-size: .8rem; white-space: nowrap; background: #fff; }
+  table.ns th, table.ns td { border: 1px solid #555; padding: 3px 4px; text-align: left; min-width: 34px; }
+  table.ns th { text-align: center; background: #f3f6f9; }
+  table.ns th.we { background: #ffe9d6; } table.ns th.hol { background: #ffc9e3; }
+  table.ns td.we { background: #fff6ee; }
+  table.ns td.nm { font-weight: bold; min-width: 74px; }
+  table.ns tr > :first-child { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: inset -2px 0 0 #555; }
+  table.ns tr.me td { background: #fffbd1 !important; }
+  .cap { text-align: center; font-weight: bold; font-size: 1.05rem; margin-bottom: 6px; }
+  .hint { color: #789; font-size: .82rem; }
+  .err { color: #c0392b; }
+</style>
+</head>
+<body>
+<h1>耕莘醫院麻醉部｜護理師班表查詢</h1>
+<div class="card">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <select id="monthSel"><option>載入中…</option></select>
+    <select id="meSel" onchange="markMe()"><option value="">（標示我的列）</option></select>
+    <button onclick="dlPng()">下載圖片</button>
+    <span id="msg" class="hint"></span>
+  </div>
+</div>
+<div class="card">
+  <div class="grid-scroll"><div id="sheet" style="display:inline-block;padding:6px;background:#fff"></div></div>
+  <div class="hint" style="margin-top:6px">白班序號 1～11、A／B／8"-4"（8半）加班線、3-11 小夜、23-7 大夜、週六「1」主值、OFF# 假日二線、P＝恢復室。</div>
+</div>
+<div class="card">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <b style="color:#1a3c5e">📅 我的行事曆</b>
+    <select id="icsName"><option>載入中…</option></select>
+    <input type="password" id="icsPin" placeholder="個人碼" autocomplete="off" style="width:100px">
+    <button onclick="icsGet()">取得我的行事曆</button>
+    <span id="icsMsg" class="hint"></span>
+  </div>
+  <div id="icsOut" style="display:none;margin-top:10px;line-height:1.9">
+    <a id="icsGoogle" target="_blank" rel="noopener"><button type="button">加入 Google 日曆（訂閱）</button></a>
+    <a id="icsWebcal"><button type="button" style="background:#555">iPhone／Outlook 訂閱</button></a>
+    <a id="icsDl"><button type="button" style="background:#7a8a99">下載 .ics 檔</button></a>
+    <button type="button" style="background:#7a8a99" onclick="icsCopy()">複製訂閱網址</button>
+    <input id="icsUrl" readonly style="width:100%;max-width:760px;font-size:.8rem;color:#555">
+    <div class="hint">含所有已發布月份，訂閱後換班會自動更新（Google 日曆約 6～24 小時同步一次）。訂閱網址等同你的個人班表，請勿轉傳。</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="config.js?v=7"></script>
+<script src="common.js?v=7"></script>
+<script>
+var DATA = null;
+(function init() {
+  document.getElementById('monthSel').onchange = function () { load(this.value); };
+  load('');
+  jsonp({ action: 'nurseList' }, function (res) {
+    if (!res || !res.ok) return;
+    var opts = res.nurses.map(function (n) { return '<option>' + n.name + '</option>'; }).join('');
+    document.getElementById('icsName').innerHTML = opts;
+    document.getElementById('meSel').innerHTML = '<option value="">（標示我的列）</option>' + opts;
+    try { var me = localStorage.getItem('nurseName'); if (me) { document.getElementById('icsName').value = me; document.getElementById('meSel').value = me; } } catch (e) {}
+  });
+})();
+function load(month) {
+  document.getElementById('msg').textContent = '載入中…';
+  jsonp({ action: 'nurseSchedule', month: month }, function (res) {
+    var sel = document.getElementById('monthSel');
+    if (res && res.months) {
+      sel.innerHTML = res.months.slice().reverse().map(function (m) { return '<option>' + m + '</option>'; }).join('') || '<option>尚無已發布班表</option>';
+    }
+    if (!res || !res.ok) { document.getElementById('msg').innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>'; return; }
+    sel.value = res.month; DATA = res; render();
+    document.getElementById('msg').textContent = '';
+  });
+}
+function render() {
+  var p = DATA.month.split('/'), Y = parseInt(p[0], 10) + 1911, M = parseInt(p[1], 10), DIM = new Date(Y, M, 0).getDate();
+  var W = '日一二三四五六';
+  var h = '<div class="cap">麻醉科工作時間表　' + p[0] + ' 年 ' + M + ' 月</div><table class="ns"><tr><th>日期</th>';
+  for (var d = 1; d <= DIM; d++) { var w = new Date(Y, M - 1, d).getDay(); h += '<th class="' + (w === 0 || w === 6 ? 'we' : '') + '">' + d + '</th>'; }
+  h += '</tr><tr><th>星期</th>';
+  for (var d2 = 1; d2 <= DIM; d2++) { var w2 = new Date(Y, M - 1, d2).getDay(); h += '<th class="' + (w2 === 0 || w2 === 6 ? 'we' : '') + '">' + W[w2] + '</th>'; }
+  h += '</tr>';
+  var i = 0;
+  DATA.nurses.forEach(function (n) {
+    var r = DATA.roster[n.name]; if (!r) return;
+    var label = n.cat === 'POR' ? 'POR' + n.name : (++i) + '. ' + n.name;
+    h += '<tr data-n="' + n.name + '"><td class="nm">' + label + '</td>';
+    for (var d3 = 1; d3 <= DIM; d3++) {
+      var w3 = new Date(Y, M - 1, d3).getDay();
+      h += '<td class="' + (w3 === 0 || w3 === 6 ? 'we' : '') + '">' + String(r[d3 - 1] || '').replace(/</g, '&lt;') + '</td>';
+    }
+    h += '</tr>';
+  });
+  h += '<tr><td class="nm">白班人力</td>';
+  for (var d4 = 1; d4 <= DIM; d4++) {
+    var w4 = new Date(Y, M - 1, d4).getDay(), c = 0;
+    DATA.nurses.forEach(function (n) {
+      var v = String((DATA.roster[n.name] || [])[d4 - 1] || '');
+      if (n.cat === '輪值' && (/^\d+$/.test(v) || v === 'A' || v === 'B' || v === '8"-4"')) c++;
+    });
+    h += '<td>' + (w4 === 0 || w4 === 6 || !c ? '' : c) + '</td>';
+  }
+  h += '</tr></table>';
+  document.getElementById('sheet').innerHTML = h;
+  markMe();
+}
+function markMe() {
+  var me = document.getElementById('meSel').value;
+  document.querySelectorAll('#sheet tr[data-n]').forEach(function (tr) { tr.classList.toggle('me', !!me && tr.getAttribute('data-n') === me); });
+}
+function dlPng() {
+  if (!DATA || typeof html2canvas === 'undefined') return;
+  html2canvas(document.getElementById('sheet'), { scale: 2, backgroundColor: '#ffffff' }).then(function (cv) {
+    var a = document.createElement('a');
+    a.href = cv.toDataURL('image/png'); a.download = DATA.month.replace('/', '-') + '護理師班表.png'; a.click();
+  });
+}
+function icsGet() {
+  var name = document.getElementById('icsName').value, pin = document.getElementById('icsPin').value.trim(), msg = document.getElementById('icsMsg');
+  if (!pin) { msg.innerHTML = '<span class="err">請輸入個人碼</span>'; return; }
+  msg.textContent = '產生中…';
+  jsonp({ action: 'nurseIcsLink', name: name, pin: pin }, function (res) {
+    if (!res || !res.ok) { msg.innerHTML = '<span class="err">' + ((res && res.error) || '失敗') + '</span>'; return; }
+    try { localStorage.setItem('nurseName', name); } catch (e) {}
+    var url = API_URL + '?action=nics&t=' + res.token, webcal = url.replace(/^https:/, 'webcal:');
+    document.getElementById('icsUrl').value = url;
+    document.getElementById('icsGoogle').href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(webcal);
+    document.getElementById('icsWebcal').href = webcal;
+    document.getElementById('icsDl').href = url + '&dl=1';
+    document.getElementById('icsOut').style.display = 'block';
+    msg.textContent = '';
+  });
+}
+function icsCopy() {
+  var el = document.getElementById('icsUrl'); el.select();
+  try { navigator.clipboard.writeText(el.value); } catch (e) { document.execCommand('copy'); }
+  document.getElementById('icsMsg').textContent = '已複製';
+}
+</script>
+</body>
+</html>

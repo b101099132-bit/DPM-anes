@@ -50,6 +50,15 @@
       <button onclick="loadMine()">登入載入</button>
     </div>
     <div id="loginMsg" class="hint"></div>
+    <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">修改個人碼</summary>
+      <div class="row">
+        <input type="password" id="np1" placeholder="新個人碼" autocomplete="new-password" style="width:110px">
+        <input type="password" id="np2" placeholder="再輸入一次" autocomplete="new-password" style="width:110px">
+        <button type="button" class="gray" onclick="changePin()">修改</button>
+      </div>
+      <div class="hint">先在上方選姓名、輸入「目前的個人碼」，再填新個人碼（4～8 位數字）。</div>
+      <div id="pinMsg" class="hint"></div>
+    </details>
   </div>
 
   <div id="editArea" style="display:none">
@@ -313,6 +322,29 @@ function submitReq() {
         showResult('✓ ' + rocM() + ' 需求已送出，排班時會納入考量', true);
       } else {
         showResult('回讀驗證未通過，請再送出一次', false);
+      }
+    });
+  }, 3000);
+}
+
+function changePin() {
+  var name = document.getElementById('docSel').value, pin = document.getElementById('pin').value.trim();
+  var a = document.getElementById('np1').value.trim(), b = document.getElementById('np2').value.trim();
+  var msg = document.getElementById('pinMsg');
+  if (!pin) { msg.innerHTML = '<span class="err">請先在上方輸入目前的個人碼</span>'; return; }
+  if (!/^\d{4,8}$/.test(a)) { msg.innerHTML = '<span class="err">新個人碼需為 4～8 位數字</span>'; return; }
+  if (a !== b) { msg.innerHTML = '<span class="err">兩次輸入不一致</span>'; return; }
+  if (a === pin) { msg.innerHTML = '<span class="err">新舊個人碼相同</span>'; return; }
+  msg.textContent = '修改中…';
+  fetch(API_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ action: 'changePin', name: name, pin: pin, newPin: a }) });
+  setTimeout(function () {   // 用新個人碼回讀驗證
+    jsonp({ action: 'myRequest', name: name, pin: a, month: rocM() }, function (res) {
+      if (res && res.ok) {
+        document.getElementById('pin').value = a;
+        document.getElementById('np1').value = document.getElementById('np2').value = '';
+        msg.innerHTML = '<span class="ok">✓ 個人碼已更新，下次請用新個人碼登入</span>';
+      } else {
+        msg.innerHTML = '<span class="err">修改未成功：可能目前個人碼錯誤，或新個人碼已有人使用</span>';
       }
     });
   }, 3000);

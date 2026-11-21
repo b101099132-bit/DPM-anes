@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>護理師排班工作台 | 耕莘醫院麻醉部</title>
+<style>
+  body { font-family: "Microsoft JhengHei", system-ui, sans-serif; background: #f0f4f8; margin: 0; padding: 16px; }
+  h1 { font-size: 1.2rem; color: #1a3c5e; margin: 0 0 10px; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.06); padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 1rem; color: #1a5e9e; margin: 0 0 10px; border-left: 4px solid #1a5e9e; padding-left: 8px; }
+  input, select { padding: 6px; border: 1px solid #bcd; border-radius: 6px; font-size: .95rem; }
+  button { padding: 7px 14px; font-size: .92rem; border: 0; border-radius: 7px; background: #1a5e9e; color: #fff; cursor: pointer; }
+  button.warn { background: #b34700; } button.gray { background: #7a8a99; } button.green { background: #0a7a2f; }
+  button:disabled { background: #9ab; }
+  .mbtn { padding: 4px 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .hint { color: #789; font-size: .8rem; }
+  .ok { color: #0a7a2f; font-weight: bold; } .err { color: #c0392b; font-weight: bold; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: .78rem; color: #fff; }
+  .b-pub { background: #0a7a2f; } .b-draft { background: #7a8a99; }
+  .grid-scroll { overflow-x: auto; }
+  table.ns { border-collapse: collapse; font-size: .76rem; white-space: nowrap; }
+  table.ns th, table.ns td { border: 1px solid #cbd6e2; padding: 2px 3px; text-align: center; min-width: 30px; }
+  table.ns th { background: #eef4fa; color: #1a3c5e; }
+  table.ns th.we, table.ns td.we { background: #ffe9d6; }
+  table.ns th.hol { background: #ffc9e3; }
+  table.ns td.nm { font-weight: bold; background: #f7fafd; min-width: 60px; text-align: left; }
+  table.ns tr > :first-child { position: sticky; left: 0; z-index: 2; box-shadow: inset -2px 0 0 #9fb3c8; }
+  table.ns tr > th:first-child { background: #eef4fa; }
+  table.ns td.c { cursor: pointer; height: 22px; }
+  table.ns td.prev { background: #f0f0f0; color: #999; }
+  table.ns td.man { outline: 2px solid #1a5e9e; outline-offset: -2px; }
+  table.ns td.req { outline: 2px dashed #8e44ad; outline-offset: -2px; }
+  table.ns td.viol { background: #fdd !important; }
+  table.ns td.wish::after { content: '•'; color: #0a7a2f; font-weight: bold; }
+  table.ns td.st { background: #fafcff; color: #345; }
+  .v-E { background: #dfe3ff; } .v-N { background: #3d4a5c; color: #fff; } .v-OT { background: #d7f5e4; }
+  .v-H2 { background: #ffe0e8; } .v-HW { background: #ffe2c4; } .v-OFF { color: #aaa; }
+  #picker { position: absolute; display: none; background: #fff; border: 1px solid #9ab; border-radius: 8px; padding: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,.18); z-index: 50; max-width: 300px; }
+  #picker span { display: inline-block; margin: 2px; padding: 3px 7px; border-radius: 5px; background: #eef4fa; cursor: pointer; font-size: .82rem; }
+  #picker span:hover { background: #cfe2f5; }
+  table.mini { border-collapse: collapse; font-size: .8rem; }
+  table.mini th, table.mini td { border: 1px solid #dde5ee; padding: 3px 6px; text-align: center; }
+  table.mini th { background: #eef4fa; }
+  .warnlist { color: #b34700; font-size: .82rem; max-height: 160px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<h1>耕莘醫院麻醉部｜護理師排班工作台</h1>
+
+<div class="card" id="loginCard">
+  <div class="row">
+    <input type="password" id="pass" placeholder="護理長或管理員通行碼" style="width:180px">
+    <button type="button" class="gray mbtn" onclick="shiftMonth(-1)">◀</button>
+    <input type="month" id="month">
+    <button type="button" class="gray mbtn" onclick="shiftMonth(1)">▶</button>
+    <button onclick="login()">登入</button>
+    <span id="loginMsg" class="hint"></span>
+  </div>
+</div>
+
+<div id="work" style="display:none">
+  <div class="card">
+    <div class="row">
+      <b id="title"></b> <span id="badge"></span>
+      <button onclick="genDraft()">一鍵生成草稿班</button>
+      <button class="gray" onclick="clearAuto()">清除自動排班（保留手動）</button>
+      <button class="gray" onclick="runCheck()">檢核</button>
+      <button onclick="save(null)">儲存</button>
+      <button class="green" onclick="save('publish')">儲存並發布</button>
+      <button class="gray" onclick="unpublish()">退回草稿</button>
+    </div>
+    <div class="row">
+      <label>平日國定假日（休）</label><input id="hol" style="width:140px" onchange="onHolChange()">
+      <span class="hint" id="holHint"></span>
+    </div>
+    <div id="saveMsg"></div>
+    <div class="warnlist" id="warns"></div>
+  </div>
+
+  <div class="card">
+    <div class="grid-scroll"><table class="ns" id="grid"></table></div>
+    <div class="hint" style="margin-top:6px">點格子改班別（藍框＝手動指定，一鍵生成時不會被改；紫虛線＝要休）。綠點＝加班許願日。灰色兩欄為上月最後兩天。
+      代號：1～11 白班序號、A／B／8"-4"（8半）加班線、3-11 小夜、23-7 大夜、週六 1（主值）／2、週日與國定假日 8-4、OFF# 假日二線。</div>
+  </div>
+
+  <div class="card">
+    <h2>輪序起點（本月由誰開始；預設由上月班表自動接續）</h2>
+    <div id="starts" class="row"></div>
+    <div class="hint">夜班組、假日二線、平日 1／2 由下往上輪；假日白班、加班線由上往下輪。改了起點要再按一次「一鍵生成草稿班」。</div>
+  </div>
+
+  <div class="card">
+    <h2>本月不排（勾選＝跳過該輪序，例如純白班、新進未滿資歷、長假）</h2>
+    <div class="grid-scroll"><table class="mini" id="skipTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>要班要休（本月）</h2>
+    <div class="grid-scroll"><table class="mini" id="reqTable"></table></div>
+    <details style="margin-top:8px"><summary class="hint">填報紀錄</summary><div class="grid-scroll"><table class="mini" id="logTable"></table></div></details>
+  </div>
+
+  <div class="card">
+    <details><summary><b>護理師個人碼</b>（要班填報與訂閱行事曆用；修改請到 Google Sheet「護理師主檔」）</summary>
+      <table class="mini" id="pinTable" style="margin-top:8px"></table></details>
+  </div>
+</div>
+<div id="picker"></div>
+
+<script src="config.js?v=7"></script>
+<script src="common.js?v=7"></script>
+<script src="nurse-engine.js?v=1"></script>
+<script>
+// 院方行事曆：平日放假日（桃紅色）。週末不用列。可在上方欄位逐月修改，儲存後以設定為準
+var NURSE_HOL = { '115/12': [25], '116/01': [1], '116/02': [4, 5, 8], '116/04': [5], '116/06': [9], '116/09': [15, 28], '116/10': [25] };
+var CODES = ['OFF', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'A', 'B', '8"-4"', '3-11', '23-7',
+  '8-4', '8-4P', 'OFF#'];
+var WB = null, G = {}, MAN = {}, Y = 0, M = 0, DIM = 0, PDIM = 0, NURSES = [], ROT = [], FIXED = [];
+var REQ = {}, SKIP = {}, STARTS = {}, DERIVED = {}, OVR = {}, WARN = [], VIOL = {};
+
+(function init() {
+  var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1);
+  document.getElementById('month').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  var h = getPasscode(); if (h) document.getElementById('pass').value = h;
+  document.addEventListener('click', function (e) { if (!e.target.closest('#picker')) document.getElementById('picker').style.display = 'none'; });
+})();
+
+function rocM() { return isoToRoc(document.getElementById('month').value); }
+function shiftMonth(n) {
+  var el = document.getElementById('month'), p = el.value.split('-');
+  var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1 + n, 1);
+  var v = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  if (WB && !confirm('切換到 ' + v.replace('-', '/') + ' 會重新載入，未儲存的變更將遺失，確定？')) return;
+  el.value = v; if (WB) login();
+}
+function days(s) { return String(s || '').split(/[,，]/).map(function (x) { return parseInt(x, 10); }).filter(function (n) { return n >= 1 && n <= 31; }); }
+function dow(d) { return new Date(Y, M - 1, d).getDay(); }
+function holList() { return days(document.getElementById('hol').value); }
+function isHol(d) { var w = dow(d); return w === 0 || w === 6 || holList().indexOf(d) >= 0; }
+function prevRoc(m) { var p = m.split('/'), y = +p[0], mm = +p[1] - 1; if (mm < 1) { mm = 12; y--; } return y + '/' + ('0' + mm).slice(-2); }
+
+function login() {
+  var pass = document.getElementById('pass').value.trim(), msg = document.getElementById('loginMsg');
+  if (!pass) { msg.innerHTML = '<span class="err">請輸入通行碼</span>'; return; }
+  msg.textContent = '載入中…';
+  jsonp({ action: 'nurseWorkbench', passcode: pass, month: rocM() }, function (res) {
+    if (!res || !res.ok) { msg.innerHTML = '<span class="err">' + ((res && res.error) || '載入失敗') + '</span>'; return; }
+    msg.innerHTML = '<span class="ok">' + res.who + '登入</span>';
+    WB = res; setup();
+  }, function () { msg.innerHTML = '<span class="err">連線失敗</span>'; });
+}
+
+function setup() {
+  var p = isoToRoc(document.getElementById('month').value).split('/');
+  Y = parseInt(p[0], 10) + 1911; M = parseInt(p[1], 10);
+  DIM = new Date(Y, M, 0).getDate(); PDIM = new Date(Y, M - 1, 0).getDate();
+  NURSES = WB.nurses;
+  ROT = NURSES.filter(function (n) { return n.cat === '輪值'; }).map(function (n) { return n.name; });
+  FIXED = NURSES.filter(function (n) { return n.cat !== '輪值'; }).map(function (n) { return { name: n.name, cat: n.cat }; });
+  var cfg = (WB.cfg && WB.cfg.cfg) || {};
+  document.getElementById('hol').value = (cfg.holidays || NURSE_HOL[rocM()] || []).join(',');
+  document.getElementById('holHint').textContent = cfg.holidays ? '' : (NURSE_HOL[rocM()] ? '已依院方行事曆帶入' : '本月無平日國定假日（或尚未載入該年度行事曆）');
+  G = {};
+  NURSES.forEach(function (n) {
+    var r = WB.roster[n.name] || [];
+    G[n.name] = Array.from({ length: 31 }, function (_, i) { return String(r[i] || ''); });
+  });
+  MAN = {}; (cfg.manual || []).forEach(function (k) { MAN[k] = true; });
+  OVR = cfg.startOverride || {};
+  SKIP = {};
+  NURSES.forEach(function (n) { SKIP[n.name] = (cfg.skip && cfg.skip[n.name]) ? cfg.skip[n.name].slice() : (n.skip || []).slice(); });
+  REQ = {};
+  var H = WB.reqHeaders;
+  WB.requests.forEach(function (r) {
+    REQ[r[1]] = { off: days(r[H.indexOf('休假')]), long: days(r[H.indexOf('長假')]), wish: days(r[H.indexOf('加班許願')]), note: r[H.indexOf('備註')] || '' };
+  });
+  var st = (WB.cfg && WB.cfg.status) || '草稿';
+  document.getElementById('badge').innerHTML = '<span class="badge ' + (st === '發布' ? 'b-pub' : 'b-draft') + '">' + (st === '發布' ? '已發布' : '草稿') + '</span>';
+  document.getElementById('title').textContent = rocM() + ' 護理師班表';
+  document.getElementById('work').style.display = 'block';
+  calcStarts(); renderStarts(); renderSkip(); renderReq(); renderPins();
+  VIOL = {}; WARN = []; renderGrid(); renderWarn();
+}
+
+// ===== 輪序起點：上月班表推算（上月沒排到的輪序沿用上月設定的終點），再套本月手動指定 =====
+function calcStarts() {
+  var pm = prevRoc(rocM()), pc = (WB.prevCfg && WB.prevCfg.cfg) || {};
+  var py = M === 1 ? Y - 1 : Y, pmo = M === 1 ? 12 : M - 1;
+  DERIVED = NurseEngine.nextStarts({ Y: py, M: pmo, rot: ROT, grid: WB.prevRoster || {},
+    holidays: pc.holidays || NURSE_HOL[pm] || [], carry: pc.end || {} });
+  STARTS = {};
+  Object.keys(NurseEngine.ROT_KEYS).forEach(function (k) { STARTS[k] = OVR[k] || DERIVED[k] || ''; });
+}
+function renderStarts() {
+  var html = '';
+  Object.keys(NurseEngine.ROT_KEYS).forEach(function (k) {
+    html += '<label style="margin-right:4px">' + NurseEngine.ROT_LABEL[k] + '</label><select onchange="setStart(\'' + k + '\',this.value)">' +
+      '<option value="">（自動：' + (DERIVED[k] || (NurseEngine.ROT_KEYS[k] === 'desc' ? '名單最下' : '名單最上')) + '）</option>' +
+      ROT.map(function (n, i) { return '<option value="' + n + '"' + (OVR[k] === n ? ' selected' : '') + '>' + (i + 1) + '. ' + n + '</option>'; }).join('') +
+      '</select><span style="width:14px;display:inline-block"></span>';
+  });
+  document.getElementById('starts').innerHTML = html;
+}
+function setStart(k, v) { if (v) OVR[k] = v; else delete OVR[k]; calcStarts(); }
+
+function renderSkip() {
+  var K = NurseEngine.SKIP_KEYS;
+  var html = '<tr><th>護理師</th>' + K.map(function (k) { return '<th>' + k + '</th>'; }).join('') + '</tr>';
+  ROT.forEach(function (n) {
+    html += '<tr><td style="text-align:left">' + n + '</td>' + K.map(function (k) {
+      return '<td><input type="checkbox" ' + (SKIP[n].indexOf(k) >= 0 ? 'checked' : '') + ' onchange="toggleSkip(\'' + n + '\',\'' + k + '\',this.checked)"></td>';
+    }).join('') + '</tr>';
+  });
+  document.getElementById('skipTable').innerHTML = html;
+}
+function toggleSkip(n, k, on) {
+  var a = SKIP[n], i = a.indexOf(k);
+  if (on && i < 0) a.push(k); if (!on && i >= 0) a.splice(i, 1);
+}
+
+function renderReq() {
+  var html = '<tr><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>備註</th></tr>';
+  NURSES.forEach(function (n) {
+    var r = REQ[n.name]; if (!r) return;
+    html += '<tr><td>' + n.name + '</td><td>' + r.off.join(',') + '</td><td>' + r.long.join(',') + '</td><td>' + r.wish.join(',') + '</td><td style="text-align:left">' + escHtml(r.note) + '</td></tr>';
+  });
+  document.getElementById('reqTable').innerHTML = html;
+  var lh = '<tr><th>時間</th><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>備註</th></tr>';
+  (WB.reqLogs || []).slice().sort(function (a, b) { return String(a[0]) < String(b[0]) ? 1 : -1; }).forEach(function (r) {
+    lh += '<tr><td>' + fmtT(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td><td>' + (r[4] || '') + '</td><td>' + (r[5] || '') + '</td><td>' + escHtml(r[6] || '') + '</td></tr>';
+  });
+  document.getElementById('logTable').innerHTML = lh;
+}
+function renderPins() {
+  document.getElementById('pinTable').innerHTML = '<tr><th>護理師</th><th>類別</th><th>個人碼</th><th></th></tr>' +
+    NURSES.map(function (n) {
+      return '<tr><td>' + n.name + '</td><td>' + n.cat + '</td><td id="pin_' + n.name + '">' + n.pin + '</td>' +
+        '<td><button class="gray mbtn" onclick="resetPin(\'' + n.name + '\')">重設</button></td></tr>';
+    }).join('');
+}
+function resetPin(name) {
+  var np = prompt('幫 ' + name + ' 設定新個人碼（4～8 位數字）');
+  if (np === null) return; np = np.trim();
+  if (!/^\d{4,8}$/.test(np)) { alert('個人碼需為 4～8 位數字'); return; }
+  if (NURSES.some(function (n) { return n.name !== name && n.pin === np; })) { alert('此個人碼已有人使用'); return; }
+  var pass = document.getElementById('pass').value.trim();
+  fetch(API_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ action: 'nurseResetPin', passcode: pass, name: name, newPin: np }) });
+  document.getElementById('pin_' + name).textContent = '更新中…';
+  setTimeout(function () {
+    jsonp({ action: 'nurseWorkbench', passcode: pass, month: rocM() }, function (res) {
+      var hit = res && res.ok && res.nurses.filter(function (n) { return n.name === name; })[0];
+      if (hit) { NURSES.forEach(function (n) { if (n.name === name) n.pin = hit.pin; }); }
+      document.getElementById('pin_' + name).innerHTML = hit && hit.pin === np ? np + ' <span class="ok">✓</span>' : '<span class="err">重設失敗</span>';
+    });
+  }, 3000);
+}
+function escHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function fmtT(v) { var d = new Date(v); return isNaN(d) ? String(v) : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+function onHolChange() { renderGrid(); }
+
+// ===== 班表 =====
+function reqLocked(n, d) { var r = REQ[n]; return !!(r && (r.off.indexOf(d) >= 0 || r.long.indexOf(d) >= 0)); }
+function cls(v, d) {
+  if (v === '3-11') return 'v-E'; if (v === '23-7') return 'v-N'; if (v === 'OFF#') return 'v-H2';
+  if (v === 'A' || v === 'B' || (v === '8"-4"')) return 'v-OT'; if (v === 'OFF') return 'v-OFF';
+  if (isHol(d) && (v === '1' || v === '2' || v === '8-4')) return 'v-HW';
+  return '';
+}
+function needOff() { var c = 0; for (var d = 1; d <= DIM; d++) if (isHol(d)) c++; return c; }
+function renderGrid() {
+  var W = '日一二三四五六', hl = holList();
+  var html = '<tr><th>護理師</th><th>' + (PDIM - 1) + '</th><th>' + PDIM + '</th>';
+  for (var d = 1; d <= DIM; d++) {
+    var w = dow(d);
+    html += '<th class="' + (hl.indexOf(d) >= 0 ? 'hol' : (w === 0 || w === 6 ? 'we' : '')) + '">' + d + '<br>' + W[w] + '</th>';
+  }
+  html += '<th>OFF/應休</th><th>3-11</th><th>23-7</th><th>加班線</th><th>假白</th><th>假二線</th><th>白班</th></tr>';
+  var need = needOff();
+  NURSES.forEach(function (n) {
+    var pr = (WB.prevRoster || {})[n.name] || [];
+    html += '<tr><td class="nm">' + n.name + (n.cat !== '輪值' ? ' <span class="hint">' + (n.cat === 'POR' ? 'POR' : '固定') + '</span>' : '') + '</td>' +
+      '<td class="prev">' + (pr[PDIM - 2] || '') + '</td><td class="prev">' + (pr[PDIM - 1] || '') + '</td>';
+    var c = { off: 0, e: 0, nn: 0, ot: 0, hw: 0, h2: 0, w: 0 };
+    for (var d2 = 1; d2 <= DIM; d2++) {
+      var v = G[n.name][d2 - 1] || '', k = n.name + '|' + d2;
+      var cl = 'c ' + cls(v, d2) + (MAN[k] ? ' man' : (reqLocked(n.name, d2) ? ' req' : '')) + (VIOL[k] ? ' viol' : '') +
+        (REQ[n.name] && REQ[n.name].wish.indexOf(d2) >= 0 ? ' wish' : '');
+      html += '<td class="' + cl + '" title="' + (VIOL[k] || '') + '" onclick="openPick(event,\'' + n.name + '\',' + d2 + ')">' + escHtml(v) + '</td>';
+      if (v === 'OFF' || v === 'OFF#') c.off++;
+      if (v === '3-11') c.e++; if (v === '23-7') c.nn++; if (v === 'OFF#') c.h2++;
+      if (!isHol(d2) && (v === 'A' || v === 'B' || v === '8"-4"') && n.cat === '輪值') c.ot++;
+      if (isHol(d2) && (v === '1' || v === '2' || v === '8-4')) c.hw++;
+      if (!isHol(d2) && /^\d+$/.test(v)) c.w++;
+    }
+    var offTxt = c.off + '/' + need;
+    html += '<td class="st"' + (n.cat === '輪值' && c.off !== need ? ' style="color:#c0392b;font-weight:bold"' : '') + '>' + offTxt + '</td>' +
+      '<td class="st">' + c.e + '</td><td class="st">' + c.nn + '</td><td class="st">' + c.ot + '</td><td class="st">' + c.hw + '</td><td class="st">' + c.h2 + '</td><td class="st">' + c.w + '</td></tr>';
+  });
+  // 每日人力
+  html += '<tr><td class="nm">白班人力</td><td class="prev"></td><td class="prev"></td>';
+  for (var d3 = 1; d3 <= DIM; d3++) {
+    var cnt = 0;
+    ROT.forEach(function (n) { var v = G[n][d3 - 1]; if (!isHol(d3) && (/^\d+$/.test(v) || v === 'A' || v === 'B' || v === '8"-4"')) cnt++; });
+    html += '<td class="st">' + (isHol(d3) ? '' : cnt) + '</td>';
+  }
+  html += '<td colspan="7"></td></tr>';
+  document.getElementById('grid').innerHTML = html;
+}
+
+function openPick(ev, n, d) {
+  var pk = document.getElementById('picker');
+  var h = '<div class="hint" style="margin:2px 4px"><b>' + n + '｜' + M + '/' + d + '（' + '日一二三四五六'[dow(d)] + '）</b></div>';
+  h += CODES.map(function (c) { return '<span onclick="setCell(\'' + n + '\',' + d + ',\'' + c.replace(/"/g, '&quot;') + '\')">' + escHtml(c) + '</span>'; }).join('');
+  h += '<br><span onclick="setCell(\'' + n + '\',' + d + ',\'__OTHER__\')">其他…</span><span onclick="setCell(\'' + n + '\',' + d + ',\'\')" style="background:#fde">清除（取消手動）</span>';
+  pk.innerHTML = h; pk.style.display = 'block';
+  pk.style.left = Math.min(ev.pageX, window.innerWidth - 310) + 'px'; pk.style.top = (ev.pageY + 8) + 'px';
+  ev.stopPropagation();
+}
+function setCell(n, d, v) {
+  if (v === '__OTHER__') { v = prompt('輸入班別（例如 公假、8-4P）', G[n][d - 1] || ''); if (v === null) return; v = v.trim(); }
+  G[n][d - 1] = v;
+  var k = n + '|' + d;
+  if (v) MAN[k] = true; else delete MAN[k];
+  document.getElementById('picker').style.display = 'none';
+  VIOL = {}; renderGrid();
+}
+
+// 只保留手動格與要休日（要休＝OFF）
+function baseGrid() {
+  var g = {};
+  NURSES.forEach(function (n) {
+    g[n.name] = Array.from({ length: 31 }, function (_, i) {
+      var d = i + 1;
+      if (d > DIM) return '';
+      if (MAN[n.name + '|' + d]) return G[n.name][i] || '';
+      if (reqLocked(n.name, d)) return 'OFF';
+      return '';
+    });
+  });
+  return g;
+}
+function clearAuto() { if (!confirm('清除所有非手動指定的格子？（要休日保留為 OFF）')) return; G = baseGrid(); VIOL = {}; WARN = []; renderGrid(); renderWarn(); }
+
+function genDraft() {
+  var hasAuto = NURSES.some(function (n) { return G[n.name].some(function (v, i) { return v && !MAN[n.name + '|' + (i + 1)] && !reqLocked(n.name, i + 1); }); });
+  if (hasAuto && !confirm('重新生成會覆蓋目前非手動指定的格子，確定？')) return;
+  calcStarts();
+  var wishes = {};
+  Object.keys(REQ).forEach(function (n) { wishes[n] = REQ[n].wish; });
+  var eng = NurseEngine.create({ Y: Y, M: M, holidays: holList(), rot: ROT, fixed: FIXED, grid: baseGrid(),
+    prevGrid: WB.prevRoster || {}, starts: STARTS, skip: SKIP, wishes: wishes });
+  var r = eng.generate();
+  NURSES.forEach(function (n) { if (r.grid[n.name]) G[n.name] = r.grid[n.name]; });
+  WARN = r.warn;
+  runCheck(true);
+  document.getElementById('saveMsg').innerHTML = '<span class="ok">草稿已生成（尚未儲存）</span>';
+}
+
+// ===== 檢核 =====
+function cellAt(n, d) { if (d >= 1) return G[n][d - 1] || ''; var pr = (WB.prevRoster || {})[n] || []; return String(pr[PDIM + d - 1] || ''); }
+function runCheck(silent) {
+  VIOL = {}; var list = [];
+  function v(n, d, m) { VIOL[n + '|' + d] = m; list.push(m); }
+  ROT.forEach(function (n) {
+    var run = 0;
+    for (var d = -6; d <= DIM; d++) {
+      run = NurseEngine.isWork(cellAt(n, d)) ? run + 1 : 0;
+      if (d >= 1 && run > 6) v(n, d, n + ' ' + d + '日 連續上班第 ' + run + ' 天');
+    }
+    for (var d2 = 1; d2 <= DIM; d2++) {
+      var y = cellAt(n, d2 - 1), c = G[n][d2 - 1];
+      if (y === '3-11' && c !== '23-7') v(n, d2, n + ' ' + d2 + '日：前一天小夜，今天應接大夜');
+      if (y === '23-7' && c !== 'OFF') v(n, d2, n + ' ' + d2 + '日：大夜隔天應休');
+    }
+  });
+  for (var d = 1; d <= DIM; d++) {
+    var need = ['3-11', '23-7'];
+    if (isHol(d)) { need.push('OFF#'); need = need.concat(dow(d) === 6 ? ['1', '2'] : ['8-4']); }
+    else { need = need.concat(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', 'A', 'B', '8"-4"']); }
+    var cnt = {};
+    ROT.forEach(function (n) { var x = G[n][d - 1]; if (x) cnt[x] = (cnt[x] || 0) + 1; });
+    need.forEach(function (s) { if (!cnt[s]) list.push(d + '日 缺 ' + s); });
+    Object.keys(cnt).forEach(function (s) {
+      if (cnt[s] > 1 && s !== 'OFF') ROT.forEach(function (n) { if (G[n][d - 1] === s) v(n, d, d + '日 ' + s + ' 重複（' + cnt[s] + ' 人）'); });
+    });
+  }
+  WARN = WARN.filter(function () { return false; }).concat(list.filter(function (x, i) { return list.indexOf(x) === i; }));
+  renderGrid(); renderWarn();
+  if (!silent && !list.length) document.getElementById('saveMsg').innerHTML = '<span class="ok">檢核通過</span>';
+}
+function renderWarn() {
+  document.getElementById('warns').innerHTML = WARN.length ? '⚠ ' + WARN.length + ' 項待確認：<br>' + WARN.map(escHtml).join('<br>') : '';
+}
+
+// ===== 儲存／發布 =====
+function cfgJson() {
+  var end = NurseEngine.nextStarts({ Y: Y, M: M, rot: ROT, grid: G, holidays: holList(), carry: STARTS });
+  return JSON.stringify({ holidays: holList(), manual: Object.keys(MAN), startOverride: OVR, skip: SKIP, end: end });
+}
+function save(op) {
+  var pass = document.getElementById('pass').value.trim();
+  if (op === 'publish') {
+    runCheck(true);
+    if (!confirm((WARN.length ? '仍有 ' + WARN.length + ' 項檢核待確認。' : '') + '確定發布 ' + rocM() + ' 護理師班表？發布後所有護理師都看得到。')) return;
+  }
+  var data = {};
+  NURSES.forEach(function (n) { data[n.name] = G[n.name].slice(0, 31); });
+  var msg = document.getElementById('saveMsg');
+  msg.textContent = '儲存中…';
+  fetch(API_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ action: 'nurseSaveDraft', passcode: pass,
+    month: rocM(), data: JSON.stringify(data), cfg: cfgJson(), publish: op === 'publish' ? '1' : '' }) });
+  setTimeout(verify, 3500);
+}
+function unpublish() {
+  if (!confirm('退回草稿後，班表查詢頁將看不到本月班表，確定？')) return;
+  fetch(API_URL, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ action: 'nursePublish',
+    passcode: document.getElementById('pass').value.trim(), month: rocM(), op: 'unpublish' }) });
+  setTimeout(verify, 2500);
+}
+function verify() {
+  jsonp({ action: 'nurseWorkbench', passcode: document.getElementById('pass').value.trim(), month: rocM() }, function (res) {
+    var msg = document.getElementById('saveMsg');
+    if (!res || !res.ok) { msg.innerHTML = '<span class="err">回讀失敗，請再按一次儲存</span>'; return; }
+    var same = NURSES.every(function (n) {
+      var r = res.roster[n.name] || [];
+      return G[n.name].slice(0, DIM).every(function (v, i) { return String(r[i] || '') === String(v || ''); });
+    });
+    var st = (res.cfg && res.cfg.status) || '草稿';
+    WB.cfg = res.cfg;
+    document.getElementById('badge').innerHTML = '<span class="badge ' + (st === '發布' ? 'b-pub' : 'b-draft') + '">' + (st === '發布' ? '已發布' : '草稿') + '</span>';
+    msg.innerHTML = same ? '<span class="ok">儲存成功！' + (st === '發布' ? '班表已發布，護理師可在班表查詢頁看到' : '目前為草稿') + '</span>'
+      : '<span class="err">回讀內容與畫面不一致，請再按一次儲存</span>';
+  });
+}
+</script>
+</body>
+</html>
