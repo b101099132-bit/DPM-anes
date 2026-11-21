@@ -63,7 +63,7 @@
       <h2><span id="who"></span>：選類別後在月曆點日期（再點一次取消）</h2>
       <div class="cats" id="cats"></div>
       <div class="cal" id="cal"></div>
-      <div class="hint" style="margin-top:8px">休假／長假：該日排休。加班許願：希望排加班線（A、B、8半）的日子，會盡量配合，衝突時抽籤決定。<br>
+      <div class="hint" style="margin-top:8px">休假／長假：該日排休。加班許願：希望排加班線（A、B、8半）的日子，會盡量配合，衝突時抽籤決定。不加班許願：該日不排加班線（仍可能排一般白班）。<br>
         月曆灰色小字為其他同仁已要的假（休＝休假、長＝長假）。</div>
     </div>
     <div class="card">
@@ -82,7 +82,8 @@
 var CATS = [
   { key: '休假', color: '#8e44ad', short: '休' },
   { key: '長假', color: '#c0392b', short: '長假' },
-  { key: '加班許願', color: '#16a085', short: '加班' }
+  { key: '加班許願', color: '#16a085', short: '加班' },
+  { key: '不加班許願', color: '#7f8c8d', short: '不加班' }
 ];
 var cur = 0, dayCat = {}, DIM = 0, CY = 0, CM = 0, OTH = {};
 
@@ -153,7 +154,7 @@ function buildCal() {
 }
 function tap(d) {
   var k = CATS[cur].key;
-  if (k === '加班許願') { var w = new Date(CY, CM - 1, d).getDay(); if (w === 0 || w === 6) { alert('加班線只排平日'); return; } }
+  if (k === '加班許願' || k === '不加班許願') { var w = new Date(CY, CM - 1, d).getDay(); if (w === 0 || w === 6) { alert('加班線只排平日'); return; } }
   if (dayCat[d] === k) delete dayCat[d]; else dayCat[d] = k;
   paint(d);
 }

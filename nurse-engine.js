@@ -31,6 +31,7 @@
     var P = o.prevGrid || {};
     var skip = o.skip || {};
     var wishes = o.wishes || {};
+    var noWishes = o.noWishes || {};   // 不加班許願：該日不排加班線（A／B／8半）
     function cell(n, d) {
       if (d >= 1 && d <= DIM) return G[n][d - 1] || '';
       if (d < 1) { var pr = P[n]; return pr ? String(pr[PDIM + d - 1] || '') : ''; }
@@ -73,6 +74,7 @@
       if ((shift === H2 || shift === HD) && !isHol(d)) return false;
       var sk = skipKeyOf(d, shift);
       if (sk && skips(n, sk)) return false;
+      if (sk === '加班線' && (noWishes[n] || []).indexOf(d) >= 0) return false;
       if (wouldExceed(n, d, shift)) return false;
       var y = cell(n, d - 1);
       if (y === E && shift !== N) return false;

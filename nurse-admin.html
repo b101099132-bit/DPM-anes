@@ -35,6 +35,7 @@
   table.ns td.req { outline: 2px dashed #8e44ad; outline-offset: -2px; }
   table.ns td.viol { background: #fdd !important; }
   table.ns td.wish::after { content: '•'; color: #0a7a2f; font-weight: bold; }
+  table.ns td.nowish::after { content: '×'; color: #c0392b; font-weight: bold; font-size: .7rem; }
   table.ns td.st { background: #fafcff; color: #345; }
   .v-E { background: #dfe3ff; } .v-N { background: #3d4a5c; color: #fff; } .v-OT { background: #d7f5e4; }
   .v-H2 { background: #ffe0e8; } .v-HW { background: #ffe2c4; } .v-OFF { color: #aaa; }
@@ -83,7 +84,7 @@
 
   <div class="card">
     <div class="grid-scroll"><table class="ns" id="grid"></table></div>
-    <div class="hint" style="margin-top:6px">點格子改班別（藍框＝手動指定，一鍵生成時不會被改；紫虛線＝要休）。綠點＝加班許願日。灰色兩欄為上月最後兩天。
+    <div class="hint" style="margin-top:6px">點格子改班別（藍框＝手動指定，一鍵生成時不會被改；紫虛線＝要休）。綠點＝加班許願日，紅×＝不加班許願日（一鍵生成不會排加班線）。灰色兩欄為上月最後兩天。
       代號：1～11 白班序號、A／B／8"-4"（8半）加班線、3-11 小夜、23-7 大夜、週六 1（主值）／2、週日與國定假日 8-4、OFF# 假日二線。</div>
   </div>
 
@@ -176,7 +177,8 @@ function setup() {
   REQ = {};
   var H = WB.reqHeaders;
   WB.requests.forEach(function (r) {
-    REQ[r[1]] = { off: days(r[H.indexOf('休假')]), long: days(r[H.indexOf('長假')]), wish: days(r[H.indexOf('加班許願')]), note: r[H.indexOf('備註')] || '' };
+    REQ[r[1]] = { off: days(r[H.indexOf('休假')]), long: days(r[H.indexOf('長假')]), wish: days(r[H.indexOf('加班許願')]),
+      nowish: H.indexOf('不加班許願') >= 0 ? days(r[H.indexOf('不加班許願')]) : [], note: r[H.indexOf('備註')] || '', time: r[H.indexOf('填報時間')] };
   });
   var st = (WB.cfg && WB.cfg.status) || '草稿';
   document.getElementById('badge').innerHTML = '<span class="badge ' + (st === '發布' ? 'b-pub' : 'b-draft') + '">' + (st === '發布' ? '已發布' : '草稿') + '</span>';
@@ -223,15 +225,16 @@ function toggleSkip(n, k, on) {
 }
 
 function renderReq() {
-  var html = '<tr><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>備註</th></tr>';
+  var html = '<tr><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>不加班許願</th><th>備註</th><th>最後填報時間</th></tr>';
   NURSES.forEach(function (n) {
     var r = REQ[n.name]; if (!r) return;
-    html += '<tr><td>' + n.name + '</td><td>' + r.off.join(',') + '</td><td>' + r.long.join(',') + '</td><td>' + r.wish.join(',') + '</td><td style="text-align:left">' + escHtml(r.note) + '</td></tr>';
+    html += '<tr><td>' + n.name + '</td><td>' + r.off.join(',') + '</td><td>' + r.long.join(',') + '</td><td>' + r.wish.join(',') + '</td><td>' + r.nowish.join(',') +
+      '</td><td style="text-align:left">' + escHtml(r.note) + '</td><td>' + (r.time ? fmtT(r.time) : '') + '</td></tr>';
   });
   document.getElementById('reqTable').innerHTML = html;
-  var lh = '<tr><th>時間</th><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>備註</th></tr>';
+  var lh = '<tr><th>時間</th><th>護理師</th><th>休假</th><th>長假</th><th>加班許願</th><th>不加班許願</th><th>備註</th></tr>';
   (WB.reqLogs || []).slice().sort(function (a, b) { return String(a[0]) < String(b[0]) ? 1 : -1; }).forEach(function (r) {
-    lh += '<tr><td>' + fmtT(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td><td>' + (r[4] || '') + '</td><td>' + (r[5] || '') + '</td><td>' + escHtml(r[6] || '') + '</td></tr>';
+    lh += '<tr><td>' + fmtT(r[0]) + '</td><td>' + r[2] + '</td><td>' + (r[3] || '') + '</td><td>' + (r[4] || '') + '</td><td>' + (r[5] || '') + '</td><td>' + (r[7] || '') + '</td><td>' + escHtml(r[6] || '') + '</td></tr>';
   });
   document.getElementById('logTable').innerHTML = lh;
 }
@@ -288,7 +291,8 @@ function renderGrid() {
     for (var d2 = 1; d2 <= DIM; d2++) {
       var v = G[n.name][d2 - 1] || '', k = n.name + '|' + d2;
       var cl = 'c ' + cls(v, d2) + (MAN[k] ? ' man' : (reqLocked(n.name, d2) ? ' req' : '')) + (VIOL[k] ? ' viol' : '') +
-        (REQ[n.name] && REQ[n.name].wish.indexOf(d2) >= 0 ? ' wish' : '');
+        (REQ[n.name] && REQ[n.name].wish.indexOf(d2) >= 0 ? ' wish' : '') +
+        (REQ[n.name] && REQ[n.name].nowish.indexOf(d2) >= 0 ? ' nowish' : '');
       html += '<td class="' + cl + '" title="' + (VIOL[k] || '') + '" onclick="openPick(event,\'' + n.name + '\',' + d2 + ')">' + escHtml(v) + '</td>';
       if (v === 'OFF' || v === 'OFF#') c.off++;
       if (v === '3-11') c.e++; if (v === '23-7') c.nn++; if (v === 'OFF#') c.h2++;
@@ -349,10 +353,10 @@ function genDraft() {
   var hasAuto = NURSES.some(function (n) { return G[n.name].some(function (v, i) { return v && !MAN[n.name + '|' + (i + 1)] && !reqLocked(n.name, i + 1); }); });
   if (hasAuto && !confirm('重新生成會覆蓋目前非手動指定的格子，確定？')) return;
   calcStarts();
-  var wishes = {};
-  Object.keys(REQ).forEach(function (n) { wishes[n] = REQ[n].wish; });
+  var wishes = {}, noWishes = {};
+  Object.keys(REQ).forEach(function (n) { wishes[n] = REQ[n].wish; noWishes[n] = REQ[n].nowish; });
   var eng = NurseEngine.create({ Y: Y, M: M, holidays: holList(), rot: ROT, fixed: FIXED, grid: baseGrid(),
-    prevGrid: WB.prevRoster || {}, starts: STARTS, skip: SKIP, wishes: wishes });
+    prevGrid: WB.prevRoster || {}, starts: STARTS, skip: SKIP, wishes: wishes, noWishes: noWishes });
   var r = eng.generate();
   NURSES.forEach(function (n) { if (r.grid[n.name]) G[n.name] = r.grid[n.name]; });
   WARN = r.warn;
