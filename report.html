@@ -33,6 +33,8 @@
   .err { color: #c0392b; font-weight: bold; }
   a.nav { display: inline-block; margin-left: 12px; font-size: .85rem; }
   .hint { color: #789; font-size: .8rem; margin-top: 6px; }
+  .range { font-size: .88rem; color: #345; display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+  .range select { padding: 5px; border: 1px solid #bcd; border-radius: 6px; }
   @media print {
     body { background: #fff; padding: 0; }
     .toolbar, .dlbtn, a.nav { display: none !important; }
@@ -51,25 +53,29 @@
       <button id="segAll" onclick="setView('all')">綜合</button>
     </div>
     <button onclick="window.print()">列印 / 另存 PDF</button>
+    <span class="range">期間 <select id="rFrom" onchange="onRange()"></select> ～ <select id="rTo" onchange="onRange()"></select></span>
+    <span class="range">下載內容 <label><input type="checkbox" id="incChart" checked> 圖</label>
+      <label><input type="checkbox" id="incTable" checked> 表格</label></span>
+    <button onclick="dlAll()">下載全部 PNG</button>
   </div>
 
   <div class="card">
     <div class="cardhead"><h2>一、整體麻醉量成長趨勢（麻醉總數，含腸胃鏡）</h2>
-      <button class="dlbtn" onclick="dlChart('c1','整體麻醉量成長趨勢')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'整體麻醉量成長趨勢')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c1"></canvas></div>
     <div class="tablebox" id="t1"></div>
   </div>
 
   <div class="card">
     <div class="cardhead"><h2>二、腸胃鏡麻醉業務量同期比較</h2>
-      <button class="dlbtn" onclick="dlChart('c2','腸胃鏡麻醉業務量同期比較')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'腸胃鏡麻醉業務量同期比較')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c2"></canvas></div>
     <div class="tablebox" id="t2"></div>
   </div>
 
   <div class="card" id="card3">
     <div class="cardhead"><h2>三、腸胃鏡日均量 vs. 目標值（<span id="targetLabel"></span> 台/日）</h2>
-      <button class="dlbtn" onclick="dlChart('c3','腸胃鏡日均量vs目標值')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'腸胃鏡日均量vs目標值')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c3"></canvas></div>
     <div class="tablebox" id="t3"></div>
     <div class="hint">日均量＝腸胃鏡數 ÷ 該月腸胃鏡工作天數；未填工作天數的月份不顯示。</div>
@@ -77,27 +83,28 @@
 
   <div class="card">
     <div class="cardhead"><h2>四、麻醉型態趨勢（插管全麻／未插管全麻／IVG）</h2>
-      <button class="dlbtn" onclick="dlChart('c4','麻醉型態趨勢')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'麻醉型態趨勢')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c4"></canvas></div>
     <div class="hint" id="hint4"></div>
   </div>
 
   <div class="card">
     <div class="cardhead"><h2>五、麻醉型態比例趨勢（％）</h2>
-      <button class="dlbtn" onclick="dlChart('c5','麻醉型態比例趨勢')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'麻醉型態比例趨勢')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c5"></canvas></div>
     <div class="hint">各月插管全麻／未插管全麻／IVG 佔三者合計之百分比。</div>
   </div>
 
   <div class="card">
     <div class="cardhead"><h2>六、一日值班費</h2>
-      <button class="dlbtn" onclick="dlChart('c6','一日值班費')">下載 PNG</button></div>
+      <button class="dlbtn" onclick="dlCard(this,'一日值班費')">下載 PNG</button></div>
     <div class="chartbox"><canvas id="c6"></canvas></div>
     <div class="tablebox" id="t6"></div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="config.js?v=7"></script>
 <script src="common.js?v=7"></script>
 <script>
@@ -140,6 +147,7 @@ function loadSite(site) {
       document.getElementById('status').textContent = '';
       document.getElementById('toolbar').style.display = 'flex';
       document.getElementById('targetLabel').textContent = GI_TARGET;
+      initRange();
       render();
     }
   });
@@ -181,6 +189,26 @@ function mapOf_(list, key) {
   list.forEach(function (s) { if (s[key] != null) o[s.month] = s[key]; });
   return o;
 }
+
+// ===== 起訖月份（篩選圖表與表格；成長率仍以完整資料計算前期）=====
+var R_FROM = '', R_TO = '';
+function initRange() {
+  var L = allMonths_();
+  var opts = L.map(function (m) { return '<option>' + m + '</option>'; }).join('');
+  document.getElementById('rFrom').innerHTML = opts;
+  document.getElementById('rTo').innerHTML = opts;
+  R_FROM = L[0] || ''; R_TO = L[L.length - 1] || '';
+  document.getElementById('rFrom').value = R_FROM;
+  document.getElementById('rTo').value = R_TO;
+}
+function onRange() {
+  var f = document.getElementById('rFrom').value, t = document.getElementById('rTo').value;
+  if (f > t) { var x = f; f = t; t = x; document.getElementById('rFrom').value = f; document.getElementById('rTo').value = t; }
+  R_FROM = f; R_TO = t;
+  render();
+}
+function inRange(m) { return (!R_FROM || m >= R_FROM) && (!R_TO || m <= R_TO); }
+function rng(list) { return list.filter(function (s) { return inRange(s.month); }); }
 
 function setView(v) {
   VIEW = v;
@@ -224,13 +252,14 @@ function prevMonthKey(m) {
 }
 function fmtN(v) { return v == null ? '' : Number(v).toLocaleString(); }
 
-function yoyTable(elId, data) {
+function yoyTable(elId, data, fullData) {
   var ys = Object.keys(data).sort();
+  var F = fullData || data;
   var html = '<table><tr><th></th>';
   for (var m = 1; m <= 12; m++) html += '<th>' + m + '月</th>';
   html += '</tr>';
   ys.forEach(function (y) {
-    var py = data[String(parseInt(y, 10) - 1)] || {};
+    var py = F[String(parseInt(y, 10) - 1)] || {};
     html += '<tr><td>' + y + '年</td>';
     for (var m = 1; m <= 12; m++) {
       var v = (m in data[y]) ? data[y][m] : null;
@@ -245,7 +274,7 @@ function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); delete CHART
 // ===== 主渲染 =====
 function render() {
   if (VIEW === 'all') { renderCompare(); return; }
-  var list = SERIES[VIEW];
+  var full = SERIES[VIEW], list = rng(full);
   var labels12 = Array.from({ length: 12 }, function (_, i) { return (i + 1) + '月'; });
 
   destroyChart('c1');
@@ -254,7 +283,7 @@ function render() {
     data: { labels: labels12, datasets: yoyDatasets(totalYoY, 'line') },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: '個案數' } } } }
   });
-  yoyTable('t1', totalYoY);
+  yoyTable('t1', totalYoY, byYear(full, 'total'));
 
   destroyChart('c2');
   var giYoY = byYear(list, 'gi');
@@ -263,7 +292,7 @@ function render() {
     data: { labels: labels12, datasets: yoyDatasets(giYoY, 'bar') },
     options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '個案數' } } } }
   });
-  yoyTable('t2', giYoY);
+  yoyTable('t2', giYoY, byYear(full, 'gi'));
 
   // 圖三：日均量 vs 目標（有填工作天數的月份才顯示）
   var card3 = document.getElementById('card3');
@@ -327,6 +356,7 @@ function renderFee() {
   var L = [];
   show.forEach(function (x) { Object.keys(x[1]).forEach(function (m) { if (L.indexOf(m) < 0) L.push(m); }); });
   L.sort();
+  L = L.filter(inRange);
 
   destroyChart('c6');
   CHARTS.c6 = new Chart(document.getElementById('c6'), {
@@ -388,7 +418,7 @@ function compareTable_(elId, L, hqMap, akMap, growth) {
 }
 
 function renderCompare() {
-  var L = allMonths_();
+  var L = allMonths_().filter(inRange);
   var HQ_C = '#1a5e9e', AK_C = '#b34700';
 
   destroyChart('c1');
@@ -471,21 +501,63 @@ function renderCompare() {
   renderFee();
 }
 
-// ===== PNG 下載（白底）=====
-function dlChart(id, name) {
-  var src = document.getElementById(id);
+// ===== PNG 下載：依起訖月份，含標題、圖與表格（可勾選）=====
+function cardParts_(card) {
+  var h2 = card.querySelector('h2'), cv = card.querySelector('canvas'), tb = card.querySelector('.tablebox');
+  var hints = Array.prototype.map.call(card.querySelectorAll('.hint'), function (h) { return h.textContent; }).filter(String);
+  return { title: h2 ? h2.textContent : '', canvas: cv, tableHtml: tb ? tb.innerHTML : '', hints: hints };
+}
+function whiteChart_(src) {
   var tmp = document.createElement('canvas');
   tmp.width = src.width; tmp.height = src.height;
   var ctx = tmp.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, tmp.width, tmp.height);
   ctx.drawImage(src, 0, 0);
-  var a = document.createElement('a');
-  var list = SERIES[VIEW] || SERIES.hq.concat(SERIES.ak).sort(function (a, b) { return a.month < b.month ? -1 : 1; });
-  var last = list.length ? list[list.length - 1].month.replace('/', '-') : '';
-  a.download = VIEW_LABEL[VIEW] + '_' + name + '_' + last + '.png';
-  a.href = tmp.toDataURL('image/png');
-  a.click();
+  return tmp.toDataURL('image/png');
+}
+function exportPng_(cards, filename) {
+  var incC = document.getElementById('incChart').checked, incT = document.getElementById('incTable').checked;
+  if (!incC && !incT) { alert('請至少勾選「圖」或「表格」'); return; }
+  if (typeof html2canvas === 'undefined') { alert('圖片元件載入失敗，請重新整理後再試'); return; }
+  var box = document.createElement('div');
+  box.style.cssText = 'position:absolute;left:-30000px;top:0;background:#fff;padding:18px 22px;display:inline-block;' +
+    'font-family:"Microsoft JhengHei",system-ui,sans-serif;';
+  var head = '耕莘醫院麻醉部｜' + VIEW_LABEL[VIEW] + '｜' + R_FROM + ' ～ ' + R_TO;
+  var html = '<div style="color:#678;font-size:13px;margin-bottom:10px">' + head + '</div>';
+  var imgs = [];
+  cards.forEach(function (card, k) {
+    var p = cardParts_(card);
+    html += '<div style="' + (k ? 'margin-top:22px;padding-top:14px;border-top:1px solid #dde5ee;' : '') + '">' +
+      '<div style="font-weight:bold;color:#1a5e9e;font-size:16px;border-left:4px solid #1a5e9e;padding-left:8px;margin-bottom:8px">' + p.title + '</div>';
+    if (incC && p.canvas) {
+      html += '<img data-k="' + imgs.length + '" style="display:block;width:' + p.canvas.clientWidth + 'px;height:' + p.canvas.clientHeight + 'px">';
+      imgs.push(whiteChart_(p.canvas));
+    }
+    if (incT && p.tableHtml && p.tableHtml.indexOf('<table') >= 0) html += '<div style="margin-top:10px">' + p.tableHtml + '</div>';
+    if (p.hints.length) html += '<div class="hint">' + p.hints.join('<br>') + '</div>';
+    html += '</div>';
+  });
+  box.innerHTML = html;
+  document.body.appendChild(box);
+  var waits = Array.prototype.map.call(box.querySelectorAll('img[data-k]'), function (im) {
+    im.src = imgs[+im.getAttribute('data-k')];
+    return im.decode ? im.decode().catch(function () {}) : Promise.resolve();
+  });
+  Promise.all(waits).then(function () {
+    return html2canvas(box, { scale: 2, backgroundColor: '#ffffff' });
+  }).then(function (cv) {
+    var a = document.createElement('a');
+    a.download = filename; a.href = cv.toDataURL('image/png'); a.click();
+    box.remove();
+  }).catch(function () { box.remove(); alert('產生圖片失敗，請再試一次'); });
+}
+function rangeTag_() { return R_FROM.replace('/', '-') + '_' + R_TO.replace('/', '-'); }
+function dlCard(btn, name) {
+  exportPng_([btn.closest('.card')], VIEW_LABEL[VIEW] + '_' + name + '_' + rangeTag_() + '.png');
+}
+function dlAll() {
+  var cards = Array.prototype.filter.call(document.querySelectorAll('.wrap > .card'), function (c) { return c.style.display !== 'none'; });
+  exportPng_(cards, VIEW_LABEL[VIEW] + '_麻醉業務分析報告_' + rangeTag_() + '.png');
 }
 </script>
 </body>
