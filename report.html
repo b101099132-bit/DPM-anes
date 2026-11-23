@@ -529,11 +529,18 @@ function exportPng_(cards, filename) {
     var p = cardParts_(card);
     html += '<div style="' + (k ? 'margin-top:22px;padding-top:14px;border-top:1px solid #dde5ee;' : '') + '">' +
       '<div style="font-weight:bold;color:#1a5e9e;font-size:16px;border-left:4px solid #1a5e9e;padding-left:8px;margin-bottom:8px">' + p.title + '</div>';
-    if (incC && p.canvas) {
-      html += '<img data-k="' + imgs.length + '" style="display:block;width:' + p.canvas.clientWidth + 'px;height:' + p.canvas.clientHeight + 'px">';
-      imgs.push(whiteChart_(p.canvas));
+    var al = (incC && incT) ? alignedSection_(card) : null;
+    if (al) {   // 圖＋表：重畫一張寬度配合表格欄位的圖，月份上下切齊
+      html += '<img data-k="' + imgs.length + '" style="display:block;width:' + al.w + 'px;height:' + al.h + 'px">';
+      imgs.push(al.img);
+      html += '<div style="margin-top:4px">' + al.tableHtml + '</div>';
+    } else {
+      if (incC && p.canvas) {
+        html += '<img data-k="' + imgs.length + '" style="display:block;width:' + p.canvas.clientWidth + 'px;height:' + p.canvas.clientHeight + 'px">';
+        imgs.push(whiteChart_(p.canvas));
+      }
+      if (incT && p.tableHtml && p.tableHtml.indexOf('<table') >= 0) html += '<div style="margin-top:10px">' + p.tableHtml + '</div>';
     }
-    if (incT && p.tableHtml && p.tableHtml.indexOf('<table') >= 0) html += '<div style="margin-top:10px">' + p.tableHtml + '</div>';
     if (p.hints.length) html += '<div class="hint">' + p.hints.join('<br>') + '</div>';
     html += '</div>';
   });
@@ -550,6 +557,56 @@ function exportPng_(cards, filename) {
     a.download = filename; a.href = cv.toDataURL('image/png'); a.click();
     box.remove();
   }).catch(function () { box.remove(); alert('產生圖片失敗，請再試一次'); });
+}
+// ===== 圖表月份切齊：用同一份設定在畫面外重畫圖，取得每個月份的 x 座標，表格欄寬照著排 =====
+function cloneCfg_(o) {   // 深拷貝（保留 callback 函式）
+  if (Array.isArray(o)) return o.map(cloneCfg_);
+  if (o && typeof o === 'object' && !(o instanceof HTMLElement)) {
+    var r = {}; Object.keys(o).forEach(function (k) { r[k] = cloneCfg_(o[k]); }); return r;
+  }
+  return o;
+}
+function alignedSection_(card) {
+  var cv = card.querySelector('canvas'), tb = card.querySelector('.tablebox table');
+  var ch = cv && CHARTS[cv.id];
+  if (!ch || !tb || !tb.rows.length) return null;
+  var labels = ch.config.data.labels || [], n = labels.length;
+  if (!n || tb.rows[0].cells.length !== n + 1) return null;   // 欄數對不上就不切齊
+  var LABEL_MIN = 76, COL_MIN = 66;
+  var W = Math.max(cv.clientWidth, LABEL_MIN + n * COL_MIN + 24), H = cv.clientHeight || 340;
+  var holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute;left:-40000px;top:0';
+  document.body.appendChild(holder);
+  function draw(padLeft) {
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H; c.style.width = W + 'px'; c.style.height = H + 'px';
+    holder.innerHTML = ''; holder.appendChild(c);
+    var opt = cloneCfg_(ch.config.options || {});
+    opt.responsive = false; opt.maintainAspectRatio = false; opt.animation = false; opt.devicePixelRatio = 2;
+    opt.layout = { padding: { left: padLeft, right: 8, top: 4, bottom: 0 } };
+    var chart = new Chart(c, { type: ch.config.type, data: cloneCfg_(ch.config.data), options: opt });
+    var x = chart.scales.x;
+    var p0 = x.getPixelForValue(0), step = n > 1 ? x.getPixelForValue(1) - p0 : (x.right - x.left);
+    return { chart: chart, step: step, left: p0 - step / 2 };
+  }
+  var r = draw(0);
+  if (r.left < LABEL_MIN) { var pad = LABEL_MIN - r.left; r.chart.destroy(); r = draw(pad); }
+  var img = whiteChart_(r.chart.canvas);
+  var left = Math.round(r.left * 10) / 10, step = r.step;
+  r.chart.destroy(); holder.remove();
+  // 表格：固定欄寬（第一欄＝圖的左側空白，其餘＝每月間距）；成長率改到第二行
+  var t = tb.cloneNode(true);
+  t.style.cssText = 'table-layout:fixed;border-collapse:collapse;white-space:normal;width:' + (left + n * step) + 'px';
+  var cg = '<colgroup><col style="width:' + left + 'px">';
+  for (var i = 0; i < n; i++) cg += '<col style="width:' + step + 'px">';
+  t.insertAdjacentHTML('afterbegin', cg + '</colgroup>');
+  Array.prototype.forEach.call(t.querySelectorAll('th,td'), function (c) {
+    c.style.padding = '3px 2px'; c.style.fontSize = '11px'; c.style.textAlign = 'center'; c.style.overflow = 'hidden';
+  });
+  Array.prototype.forEach.call(t.querySelectorAll('small'), function (sm) {
+    sm.style.display = 'block'; sm.style.fontSize = '9.5px'; sm.style.whiteSpace = 'nowrap';
+  });
+  return { img: img, w: W, h: H, tableHtml: t.outerHTML };
 }
 function rangeTag_() { return R_FROM.replace('/', '-') + '_' + R_TO.replace('/', '-'); }
 function dlCard(btn, name) {
