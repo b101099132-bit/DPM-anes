@@ -30,6 +30,8 @@
   table.sched th.we { background: #ffe9d6; }
   table.sched td.viol { outline: 2px solid #e74c3c; outline-offset: -2px; }
   table.sched td.prev { background: #f0f0f0; color: #999; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; font-size: .78rem; }
+  .legend span { padding: 2px 8px; border: 1px solid #cbd6e2; border-radius: 4px; background: #fff; }
   .s-白班 { background: #d6e6f7; } .s-值班 { background: #f5c6c2; } .s-鏡檢 { background: #c9ede4; }
   .s-安康 { background: #d5f0d0; } .s-聖母 { background: #e2e2e2; } .s-二線班 { background: #e3d6f2; }
   .s-聖母白班 { background: #e2e2e2; } .s-聖母夜班 { background: #c9cdd6; } .s-聖母全日 { background: #b4bac6; }
@@ -107,6 +109,14 @@
         <button id="btnSave" onclick="saveDraft(null)">儲存</button>
         <button class="warn" id="btnPublish" onclick="saveDraft('publish')" style="display:none">儲存並發布</button>
         <button class="gray" id="btnUnpub" onclick="unpublish()" style="display:none">退回草稿</button>
+      </div>
+      <div class="legend">
+        <span style="background:#ffe9d6">週末</span>
+        <span style="background:#f0f0f0;color:#999">上月末班別（灰色兩欄）</span>
+        <span style="outline:2px solid #e74c3c;outline-offset:-2px">違規格（滑過看原因）</span>
+        <span style="background:#a6a6a6;color:#fff;font-weight:bold">NIL 排不出人</span>
+        <span><b style="color:#0a7a2f">已排/應排</b> 相符 · <b style="color:#c0392b">不符</b></span>
+        <span class="hint" style="border:0">班別顏色見上方班別按鈕</span>
       </div>
       <div class="grid-scroll"><table class="sched" id="grid"></table></div>
       <div class="hint">灰色前兩欄為上月末班別（自動帶入，供銜接檢核）。二線班預設為鄒部長，僅部長開會日需在表中排李主任二線班。</div>

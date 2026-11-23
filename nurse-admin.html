@@ -46,6 +46,11 @@
   table.mini { border-collapse: collapse; font-size: .8rem; }
   table.mini th, table.mini td { border: 1px solid #dde5ee; padding: 3px 6px; text-align: center; }
   table.mini th { background: #eef4fa; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; font-size: .78rem; color: #345; }
+  .legend span { padding: 2px 8px; border: 1px solid #cbd6e2; border-radius: 4px; background: #fff; }
+  .legend span.v-E { background: #dfe3ff; } .legend span.v-N { background: #3d4a5c; color: #fff; }
+  .legend span.v-OT { background: #d7f5e4; } .legend span.v-H2 { background: #ffe0e8; } .legend span.v-HW { background: #ffe2c4; }
+  .legend span.v-OFF { color: #aaa; }
   .warnlist { color: #b34700; font-size: .82rem; max-height: 160px; overflow-y: auto; }
 </style>
 </head>
@@ -87,9 +92,29 @@
   </div>
 
   <div class="card">
+    <div class="legend">
+      <b>班別</b>
+      <span>1～11 白班序號</span>
+      <span class="v-OT">A／B／8"-4" 加班線</span>
+      <span class="v-E">3-11 小夜</span>
+      <span class="v-N">23-7 大夜</span>
+      <span class="v-HW">假日白班（週六 1 主值／2、週日與國定假日 8-4）</span>
+      <span class="v-H2">OFF# 假日二線</span>
+      <span class="v-OFF">OFF</span>
+    </div>
+    <div class="legend">
+      <b>標記</b>
+      <span style="outline:2px solid #1a5e9e;outline-offset:-2px">手動指定（一鍵生成不改）</span>
+      <span style="outline:2px dashed #8e44ad;outline-offset:-2px">要休／長假</span>
+      <span><b style="color:#0a7a2f">•</b> 加班許願</span>
+      <span><b style="color:#c0392b">×</b> 不加班許願</span>
+      <span style="background:#fdd">違規（滑過看原因）</span>
+      <span style="background:#ffe9d6">週末</span>
+      <span style="background:#ffc9e3">國定假日</span>
+      <span style="background:#f0f0f0;color:#999">上月最後兩天</span>
+    </div>
     <div class="grid-scroll"><table class="ns" id="grid"></table></div>
-    <div class="hint" style="margin-top:6px">點格子改班別（藍框＝手動指定，一鍵生成時不會被改；紫虛線＝要休）。綠點＝加班許願日，紅×＝不加班許願日（一鍵生成不會排加班線）。灰色兩欄為上月最後兩天。
-      代號：1～11 白班序號、A／B／8"-4"（8半）加班線、3-11 小夜、23-7 大夜、週六 1（主值）／2、週日與國定假日 8-4、OFF# 假日二線。</div>
+    <div class="hint" style="margin-top:6px">點格子即可改班別。</div>
   </div>
 
   <div class="card">
