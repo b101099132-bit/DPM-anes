@@ -42,6 +42,8 @@
   table.mini { border-collapse: collapse; font-size: .82rem; }
   table.mini th, table.mini td { border: 1px solid #dde5ee; padding: 3px 8px; text-align: right; }
   table.mini th { background: #eef4fa; }
+  /* 需求填報紀錄：捲動時固定標題列 */
+  #logTable th { position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 #cbd6e2; }
   table.mini td:first-child { text-align: center; font-weight: bold; }
   .viol-list { color: #c0392b; font-size: .85rem; white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
   .ok { color: #0a7a2f; font-weight: bold; } .err { color: #c0392b; font-weight: bold; }
